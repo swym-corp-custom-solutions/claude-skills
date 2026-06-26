@@ -104,9 +104,9 @@ claude
 **3. Describe the request**
 
 ThemeMate picks up from there. Examples:
-- "ACQ request — implement wishlisting on collection cards for retrofete.com"
-- "The wishlist heart icon on the PDP needs to match the brand pink color for leighkelleyskinstudio.com"
-- "Audit what Swym features are active on fellers.com"
+- "ACQ request — implement wishlisting on collection cards for merchantstore1.com"
+- "The wishlist heart icon on the PDP needs to match the brand pink color for merchantstore2.com"
+- "Audit what Swym features are active on merchantstore3.com"
 
 ThemeMate identifies your role (ACQ, agency, merchant), detects whether a GitHub repo exists for the merchant, and selects the right workflow automatically.
 
