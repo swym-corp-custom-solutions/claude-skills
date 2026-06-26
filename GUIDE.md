@@ -58,7 +58,6 @@ All roles follow the same workflow. ThemeMate identifies whether you are ACQ, an
 |---------|-------------------|
 | PDP wishlist button — color, size, style | Creates a scoped CSS override file, injects it in the correct layout file |
 | Collection card heart icon | Finds the card snippet, adds CSS override or custom button markup |
-| Wishlist page tab deep-linking (`?tab=sfl`) | Creates JS asset using `SwymCallbacks`, injects in `theme.liquid` |
 | Save for Later button on cart | Locates cart template, implements CSS or custom button |
 | Floating launcher / header icon | Layout file JS, targets Swym-injected element |
 | Full custom wishlist page | Disables Swym default UI (instructs user to do in App Embeds), builds custom template |
