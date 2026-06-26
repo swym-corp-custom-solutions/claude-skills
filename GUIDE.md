@@ -4,7 +4,7 @@ ThemeMate is a Claude Code skill that turns Claude into a specialized Swym Wishl
 
 **Activated by typing `/thememate` in Claude Code.**
 
-No MCP server. No separate app. Runs entirely through Shopify CLI, GitHub CLI, and standard file tools.
+No custom MCP server required. ThemeMate uses two standard MCP tools that Claude Code provides: **Playwright MCP** for browser inspection and validation, and **Swym docs MCP** for SDK references. Both are configured in Claude Code settings — see the Prerequisites section in [README.md](README.md). Beyond those, it runs entirely through Shopify CLI, GitHub CLI, and standard file tools.
 
 ---
 
@@ -17,7 +17,7 @@ No MCP server. No separate app. Runs entirely through Shopify CLI, GitHub CLI, a
 | **Support** | Audit a merchant store, diagnose Swym UI issues, answer technical questions |
 | **Agency partner** | Implement Swym features on a client's Shopify store |
 
-All roles follow the same workflow. ThemeMate detects your role from context and adjusts — ACQ sessions focus on speed and demo polish; support sessions focus on read-only diagnosis before writing anything.
+All roles follow the same workflow. ThemeMate identifies whether you are ACQ, an agency, or a merchant from context clues in your message. Read-only audit mode (Mode B) is not role-based — it is triggered by the intent of your request: if you say "audit", "diagnose", or "check", ThemeMate inspects without writing anything regardless of role.
 
 ---
 
@@ -111,10 +111,15 @@ Checks before any write:
 
 ### 7. GitHub Repo Setup
 Creates a private repo under `swym-corp-custom-solutions`, commits the clean pulled theme as a baseline on `main`, then immediately branches to `feature/<slug>`:
-```
+```bash
 gh repo create swym-corp-custom-solutions/<merchant-slug>-swym-custom --private
-git commit -m "chore: baseline pull from <merchant> live theme"
-git checkout -b feature/<feature-slug>
+git -C ./<merchant-slug> init
+git -C ./<merchant-slug> remote add origin https://github.com/swym-corp-custom-solutions/<merchant-slug>-swym-custom.git
+git -C ./<merchant-slug> checkout -b main
+git -C ./<merchant-slug> add .
+git -C ./<merchant-slug> commit -m "chore: baseline pull from <merchant> live theme <YYYY-MM-DD>"
+git -C ./<merchant-slug> push -u origin main
+git -C ./<merchant-slug> checkout -b feature/<feature-slug>
 ```
 All implementation happens on the feature branch — `main` stays as the clean baseline until the PR is merged.
 
@@ -148,8 +153,14 @@ ThemeMate shares the PR URL. Merge and post-merge merchant store deployment are 
 
 ### What happens after the PR (human steps)
 1. Human reviews and merges PR on GitHub
-2. Human runs `shopify theme push --unpublished` to create a copy theme on the merchant store
-3. Human connects the copy theme to GitHub main in Shopify Admin > Themes
+2. Human creates an unpublished copy theme on the merchant store:
+   ```bash
+   shopify theme push --store <merchant>.myshopify.com \
+     --unpublished \
+     --theme "Swym | Copy | <YYYY-MM-DD>" \
+     --path ./<merchant-slug>
+   ```
+3. Human connects the copy theme to GitHub main in Shopify Admin > Themes > three-dot menu > Connect to GitHub
 4. Merchant previews and publishes when ready
 
 ---
