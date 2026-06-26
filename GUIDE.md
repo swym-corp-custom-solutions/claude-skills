@@ -173,7 +173,7 @@ After merge, GitHub sync fires automatically and updates the connected copy them
 ## Scenarios
 
 ### ACQ — Demo prep for a prospect
-> "Set up Swym collection card wishlist buttons matching the brand color for retrofete.com. We have a demo tomorrow."
+> "Set up Swym collection card wishlist buttons matching the brand color for merchantstore1.com. We have a demo tomorrow."
 
 ThemeMate runs full first-session workflow. At the end you get a PR with the implementation. After merge, you create the unpublished copy theme and share the preview URL with the prospect.
 
