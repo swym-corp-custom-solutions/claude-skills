@@ -119,10 +119,13 @@ Once set up: Playwright connects to the existing Chrome window. Partner Portal s
 3. Edit tool — old_string verbatim from step 2
 
 Never full-read a large file. Parallel reads are fine when independent.
+Multiple edits to the SAME file must be sequential.
+
+**Edit vs Write:** Edit for existing files. Write only for new files.
 
 **Verify every push:** Confirm exit code 0. Stop on failure.
 
-**CRITICAL (silent failure) — never combine `--only` flags.** A single `shopify theme push` with multiple `--only` flags silently pushes only some files with no error. Push each file in a separate command.
+**Never combine multiple `--only` flags in one push command.** Using multiple `--only` flags in a single `shopify theme push` silently pushes only some files with no error. Push each file in a separate command.
 
 **JS display toggle:** Never `element.style.display = ''` — falls back to CSS `display: none`.
 Always use explicit value: `element.style.display = 'block'` (or `'flex'`, `'grid'`).
@@ -146,12 +149,10 @@ After 2 Edit retries fail → Write a new standalone file and instruct user to i
 ## ROLE IDENTIFICATION (once per session, before all else)
 
 1. User explicitly states their role → use it
-2. `userEmail` ends in `@swymcorp.com` → user is **Swym staff**, but do NOT assume ACQ. Ask once: "Which Swym team are you on — ACQ, Success, Support, or another?"
-3. Strong context clues (only after confirming Swym staff): ACQ members say "demo for a prospect"; Success/Support members reference existing merchant accounts
-4. Agency signals: "my client's store". Merchant signals: "my store"
-5. If still unclear, ask once only: "Quick question — are you from the Swym team, an agency, or a merchant?"
+2. Strong context clues: ACQ members say "demo for a prospect"; agencies say "my client's store"; merchants say "my store"
+3. If still unclear, ask once only: "Quick question — are you from the Swym team, an agency, or a merchant?"
 
-Hold for entire session. Values: `swym_acq` | `swym_success` | `swym_support` | `swym_staff` | `agency` | `merchant` | `unknown`
+Hold for entire session. Values: `swym_acq` | `agency` | `merchant` | `unknown`
 
 ---
 
@@ -229,23 +230,11 @@ Run before any code work on every merchant-specific request.
 
 **Step 2 — Collection page:** DOM audit (Step 5) only. No screenshot unless card layout is ambiguous from audit results.
 
-**Step 3 — Product page:** DOM audit (Step 5) only. No screenshot unless buy button placement is unclear. If Back in Stock / Notify Me is in scope, navigate to a product that has at least one out-of-stock variant and select it before running Step 5 — Notify Me only renders on OOS variants.
+**Step 3 — Product page:** DOM audit (Step 5) only. No screenshot unless buy button placement is unclear.
 
 **Step 4 — Cart page:** Navigate to cart. DOM audit (Step 5) only — look for Save for Later button presence.
 
 **Step 5 — Swym element DOM audit (run on every page above):**
-
-First, wait for Swym to finish initializing before evaluating -- app embed elements are injected asynchronously:
-```js
-(async () => {
-  await new Promise(r => {
-    if (window.__SWYM__VERSION__) return r();
-    const t = setInterval(() => { if (window.__SWYM__VERSION__) { clearInterval(t); r(); } }, 200);
-    setTimeout(r, 5000);
-  });
-})()
-```
-Then run the audit:
 ```js
 Array.from(document.querySelectorAll('[id*="swym"],[class*="swym"],[data-swym]'))
   .map(el => ({
@@ -268,8 +257,6 @@ Swym's default UI is 100% runtime-injected — it has zero footprint in theme fi
 - `hasControlCenter: true` → New Swym Control Center
 - `hasLegacyList: true`, `hasControlCenter: false` → Old default wishlist UI
 - Both false → Custom implementation
-
-Take one screenshot of the wishlist page after the eval. This is the only page (besides the homepage brand shot) where a screenshot is mandatory -- Control Center, Legacy, and Custom implementations look completely different and the visual "before" state is needed for comparison after implementation. Save to scratchpad, delete after recording context in Step 9.
 
 **Step 7 — `/#swym-list` (hash nav):** Navigate and run DOM eval to check if panel opens:
 ```js
@@ -294,22 +281,6 @@ If only a custom domain was provided, `shop` gives the `.myshopify.com` URL — 
 
 **Step 9 — Record merchant context** (state explicitly before moving on):
 vertical, theme name, primary color, button style, card image ratio, Swym features enabled, wishlist page rendering type, all Swym elements found across pages.
-
-Output a feature status table as the final part of Step 9:
-
-| Feature | Status | Source |
-|---------|--------|--------|
-| Floating launcher | - | App Embed / Snippet / Missing |
-| Header wishlist icon | - | App Embed / Snippet / Missing |
-| Collection card hearts | - | App Embed / Snippet / Missing |
-| PDP wishlist button | - | App Embed / Snippet / Missing |
-| Save for Later (cart) | - | App Embed / Snippet / Missing |
-| Notify Me (OOS) | - | App Embed / Snippet / Missing |
-| Wishlist page | - | Control Center / Legacy / Custom / Missing |
-| `/#swym-list` panel | - | Opens / Missing |
-
-Source: `document.querySelector('[class*="swymcs-"]')` null = App Embed; truthy = Snippet.
-This table is the authoritative baseline for regression detection in SWYM FULL FEATURE SWEEP.
 
 This context drives all CSS variable choices and Path A/B decisions in later phases.
 
@@ -347,7 +318,7 @@ If CLI returns an auth error:
 **Method 3 — Browser-only (last resort — BLOCK)**
 If neither CLI nor partner portal access is available, do NOT use a generic base theme.
 Say: "I can see your storefront visually but I need theme file access to implement
-this accurately. Please either (a) add <userEmail> as staff in Shopify Admin >
+this accurately. Please either (a) add [swym-email] as staff in Shopify Admin >
 Settings > Users, or (b) ask your Shopify partner to share temporary access."
 Wait. Do not estimate or guess theme structure.
 
@@ -361,17 +332,7 @@ grep -n "product-form__buttons\|buy-buttons\|name=\"add\"" ./<merchant-slug>/sni
 grep -n "card__media\|card-wrapper\|card__heading" ./<merchant-slug>/snippets/card-product.liquid
 grep -n "content_for_header\|</body>" ./<merchant-slug>/layout/theme.liquid
 grep -n "^--\|custom-property" ./<merchant-slug>/assets/base.css ./<merchant-slug>/assets/theme.css 2>/dev/null | head -60
-grep -i "swym\|wishlist" ./<merchant-slug>/config/settings_data.json 2>/dev/null
 ```
-
-**CRITICAL — app embed detection:**
-App embed blocks (Swym "App Control Centre") are injected at runtime by Shopify and have zero footprint in Liquid files. They are stored in `config/settings_data.json` under `"blocks"`.
-
-- `settings_data.json` contains a Swym/wishlist entry → "Active via **App Embed**"
-- Liquid files contain Swym code → "Active via **Snippet**"
-- Neither → "Not found"
-
-Never report "not wired up" for a feature confirmed active in the live DOM audit (Step 9 table). The live DOM is always the authoritative source. File grep only identifies *how* it is delivered.
 
 ---
 
@@ -403,11 +364,11 @@ Non-negotiable:
 5. After first session, `git pull origin main` replaces CLI pull — main IS the merchant theme.
 
 **When merchant context is missing:**
-- URL missing → eval `window.Shopify?.shop` in browser first. If it returns a value, use it. Otherwise ask for the store URL. Do not mention demo stores.
-- Email: read from the `userEmail` system context — never ask the user for it.
+- URL missing → first check if the storefront is already open in the browser: eval `window.Shopify?.shop`. If it returns a value, use it. Otherwise ask for the store URL (custom domain is fine — ThemeMate resolves `.myshopify.com` via browser eval). Do not ask for email at the same time. Do not mention demo stores.
+- URL known, email missing → ask for email.
 - Both known → proceed.
 
-No context needed (proceed immediately): Mode A.
+No context needed (proceed immediately): Mode A, Mode C1.
 
 ---
 
@@ -420,7 +381,7 @@ No context needed (proceed immediately): Mode A.
 **P3.** Direct action directive ("add X", "build X", "implement X")
 - Merchant URL present → Mode C2
 - "my store" but no URL → ask, then C2
-- No merchant signals → Mode A (explain) and offer demo
+- No merchant signals → Mode C1
 
 **P4.** Question form, no demo context → Mode A
 
@@ -441,10 +402,8 @@ After answering, offer: "Want me to apply this on a demo theme so you can see it
 
 Run Browser Discovery always.
 Then Theme Pull (CLI → partner portal → browser block escalation).
-Max 6 grep calls after pull, then summarise.
+Max 5 grep calls after pull, then summarise.
 NEVER write. NEVER push. NEVER mention demo stores to the user.
-
-After Browser Discovery + Theme Pull, produce the Step 9 feature status table. Cross-reference live DOM findings against grep and `settings_data.json` results to fill the Source column. NEVER report "not wired up" for any feature present in the live DOM audit.
 
 ---
 
@@ -456,7 +415,17 @@ After Browser Discovery + Theme Pull, produce the Step 9 feature status table. C
 Consult 1-2 Swym docs references. Skip in C3 if same feature already researched.
 
 **Swym UI identification (mandatory before any Swym UI customization):**
-Swym UI is 100% runtime-injected — never grep theme files for it. Run the Step 5 DOM audit (wait for Swym init first) on each page type:
+Swym's default UI elements are 100% runtime-injected by the app extension — they have zero footprint in theme `.liquid` files. Never grep theme files to find Swym UI elements. Always discover them via browser.
+
+Navigate to each page type and run this DOM audit:
+```js
+Array.from(document.querySelectorAll('[id*="swym"],[class*="swym"],[data-swym]'))
+  .map(el => ({
+    id: el.id, classes: el.className,
+    ariaLabel: el.getAttribute('aria-label'),
+    y: Math.round(el.getBoundingClientRect().top + scrollY)
+  }))
+```
 
 | Page to visit | Swym elements expected |
 |---------------|----------------------|
@@ -597,43 +566,6 @@ Proceed to MERCHANT CONFIRMATION only when DOM eval confirms correct state.
 - Ask explicitly: "Can you open that URL in your browser and confirm the feature looks correct?"
 - Wait for the user to confirm visually before proceeding to MERCHANT CONFIRMATION or PR creation
 - Mention once: "For direct screenshot validation in future sessions, see the BROWSER WINDOW SETUP section."
-
-### SWYM FULL FEATURE SWEEP (local preview)
-
-Run against the URL printed by `shopify theme dev` (typically `http://127.0.0.1:9292` but use the actual printed URL) to verify ALL Swym features render correctly -- not just the feature just implemented. Run this:
-- After any Mode C implementation, before MERCHANT CONFIRMATION
-- During Mode B inspection, to compare live store baseline vs. local state
-
-**Visit each page in order:**
-
-| Step | URL | What to check |
-|------|-----|--------------|
-| 1 | `<preview>/` | Step 5 DOM audit + Step 8 JS inspection |
-| 2 | `<preview>/collections/all` | Step 5 DOM audit -- card heart icons |
-| 3 | `<preview>/products/<any-slug>` | Step 5 DOM audit -- PDP button; add OOS variant for Notify Me |
-| 4 | `<preview>/cart` | Step 5 DOM audit -- Save for Later button |
-| 5 | `<preview>/pages/swym-wishlist` | Step 6 wishlist page eval |
-| 6 | `<preview>/#swym-list` | Step 7 hash nav panel eval |
-
-**After all pages, run master status eval on any page (wait for Swym init first using the async IIFE from Step 5):**
-```js
-({
-  swymVersion: window.__SWYM__VERSION__,
-  enabledFeatures: window.SwymEnabledCommonFeatures,
-  wishlistEmbed: window.swymWishlistEmbedLoaded,
-  floatingLauncher: !!document.querySelector('[id*="swym"][id*="launcher"],[class*="swym"][class*="launcher"]'),
-  headerIcon: !!document.querySelector('[id*="swym"][id*="header"],[class*="swym"][class*="header"]'),
-  cardHearts: document.querySelectorAll('[class*="swym"][class*="card"],[class*="swym-vp"]').length,
-  pdpButton: !!document.querySelector('#swym-atw-pdp-button,.atw-button-add,[id*="swym"][id*="pdp"]'),
-  saveForLater: !!document.querySelector('[id*="swym"][id*="sfl"],[class*="swym"][class*="sfl"]'),
-  controlCenter: !!document.querySelector('swym-storefront-layout'),
-  isAppEmbed: !document.querySelector('[class*="swymcs-"]')
-})
-```
-
-Produce the feature status table (same format as Step 9 baseline).
-
-**Regression rule:** If any feature marked active in the Step 9 baseline now shows missing in local preview, treat it as a regression introduced by the implementation. Do NOT proceed to MERCHANT CONFIRMATION -- diagnose and fix first.
 
 ### MERCHANT CONFIRMATION
 
