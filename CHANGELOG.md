@@ -22,7 +22,6 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 **`skill-updater.sh`**
 - Daily version check against GitHub `main` branch
 - Auto-installs missing skills and auto-updates outdated ones
-- Archives previous version to `~/.claude/skills/<name>/versions/SKILL-X.Y.Z.md` before overwriting for local rollback
 
 ---
 

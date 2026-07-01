@@ -31,7 +31,7 @@ for skill_dir in "$SKILLS_SRC"/*/; do
   skill_name="$(basename "$skill_dir")"
   dest="$SKILLS_DEST/$skill_name"
   mkdir -p "$dest"
-  cp -r "$skill_dir"* "$dest/"
+  cp "$skill_dir/SKILL.md" "$dest/SKILL.md"
   version=$(grep -m1 "^  version:" "$dest/SKILL.md" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
   echo "  installed $skill_name ($version)"
 done

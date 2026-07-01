@@ -132,21 +132,16 @@ grep "version:" ~/.claude/skills/swym-thememate/SKILL.md
 
 #### Rollback to a previous version
 
-Each auto-update archives the replaced version locally at:
-```
-~/.claude/skills/<skill-name>/versions/SKILL-X.Y.Z.md
-```
+Previous versions are committed to this repo under `skills/<name>/versions/`. See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ```bash
-# List available local backups
-ls ~/.claude/skills/swym-thememate/versions/
+cd claude-skills
+git pull origin main
 
-# Restore a specific version
-cp ~/.claude/skills/swym-thememate/versions/SKILL-1.0.0.md \
+# Copy the version you want directly into your local skill folder
+cp skills/swym-thememate/versions/SKILL-1.0.0.md \
    ~/.claude/skills/swym-thememate/SKILL.md
 ```
-
-Named version snapshots are also committed to this repo under `skills/<name>/versions/` — see [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ---
 
