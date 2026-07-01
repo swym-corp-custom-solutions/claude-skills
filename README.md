@@ -126,6 +126,8 @@ powershell -File "$HOME\.claude\skill-updater.ps1"
 #### Manual update
 
 If you prefer not to use the auto-updater, or need to update immediately:
+
+**macOS / Linux / Git Bash**
 ```bash
 cd claude-skills
 git pull origin main
@@ -133,9 +135,23 @@ cp skills/swym-shopify-thememate-theme-editor/SKILL.md \
    ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
 ```
 
+**Windows (PowerShell)**
+```powershell
+cd claude-skills
+git pull origin main
+Copy-Item "skills\swym-shopify-thememate-theme-editor\SKILL.md" `
+  "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\SKILL.md"
+```
+
 To check what version is installed locally:
+
+**macOS / Linux / Git Bash**
 ```bash
 grep "version:" ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
+```
+**Windows (PowerShell)**
+```powershell
+Select-String "version:" "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\SKILL.md"
 ```
 
 #### Rollback to a previous version
@@ -145,7 +161,7 @@ Each auto-update archives the replaced version locally at:
 ~/.claude/skills/<skill-name>/versions/SKILL-X.Y.Z.md
 ```
 
-To roll back:
+**macOS / Linux / Git Bash**
 ```bash
 # List available local backups
 ls ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/
@@ -153,6 +169,16 @@ ls ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/
 # Restore a specific version
 cp ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/SKILL-1.0.0.md \
    ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
+```
+
+**Windows (PowerShell)**
+```powershell
+# List available local backups
+Get-ChildItem "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\versions\"
+
+# Restore a specific version
+Copy-Item "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\versions\SKILL-1.0.0.md" `
+  "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\SKILL.md"
 ```
 
 Named version snapshots are also committed to this repo under `skills/<name>/versions/` — see [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
