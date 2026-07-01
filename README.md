@@ -1,6 +1,6 @@
 # Swym Claude Skills
 
-Claude Code skills used by the Swym ACQ and solutions team. Each skill is a self-contained directory under `skills/` that gets installed into `~/.claude/skills/` on your local machine.
+Claude Code skills for Swym staff (ACQ, Success, Support), agencies, and merchants. Each skill is a self-contained directory under `skills/` that gets installed into `~/.claude/skills/` on your local machine.
 
 ---
 
@@ -45,12 +45,12 @@ shopify auth login   # log in with your Shopify Partner account
 ```
 Not required for BigCommerce or headless sessions.
 
-**4. GitHub CLI**
+**4. GitHub CLI** _(Swym staff and agencies only -- not required for merchants)_
 ```bash
 gh auth login
 ```
 Install via [cli.github.com](https://cli.github.com) if not already present (`brew install gh` on macOS, `winget install GitHub.cli` on Windows).
-Must have access to the `swym-corp-custom-solutions` GitHub org.
+Swym staff need access to the `swym-corp-custom-solutions` org. Agencies use their own org (ThemeMate will prompt for it at session start).
 
 **5. Shopify Partner Portal access** _(Shopify storefronts only)_
 ThemeMate pulls themes via the Shopify CLI, which requires collaborator or staff access on the merchant store. Confirm you can log in to `partners.shopify.com` and see the merchant store under Stores. Not required for BigCommerce or headless sessions.
@@ -58,21 +58,19 @@ ThemeMate pulls themes via the Shopify CLI, which requires collaborator or staff
 **6. Chrome with remote debugging (for browser validation)**
 ThemeMate validates features by connecting to your existing authenticated Chrome window. Before starting a session, launch Chrome with the remote debugging port open:
 
-macOS:
 ```bash
+# macOS
 open -a "Google Chrome" --args --remote-debugging-port=9222
-```
-Windows:
-```powershell
-Start-Process "chrome.exe" "--remote-debugging-port=9222"
-```
-Linux:
-```bash
+
+# Linux
 google-chrome --remote-debugging-port=9222
 ```
+
+> **Windows (Git Bash / WSL):** `start chrome --remote-debugging-port=9222`
+
 If Chrome is already running without this flag, quit it and relaunch with the command above.
 
-This is a one-time setup per machine. Without it, ThemeMate falls back to asking you to confirm the preview manually in your browser.
+Without it, ThemeMate falls back to asking you to confirm the preview manually in your browser.
 
 ---
 
@@ -170,20 +168,28 @@ claude
 
 **3. Describe the request**
 
-ThemeMate identifies your role (Swym ACQ, Success, Support, agency, or merchant) and detects the storefront platform, then selects the right workflow automatically.
+ThemeMate asks about your role once (ACQ, Success, Support, agency, or merchant) and detects the storefront platform, then selects the right workflow automatically. You don't need to state your role upfront -- just describe what you need.
 
-**Shopify examples:**
-- "ACQ request — implement wishlisting on collection cards for merchantstore.com"
-- "The wishlist heart icon on the PDP needs to match the brand pink for merchantstore.com"
-- "Audit what Swym features are active on merchantstore.com"
+**ACQ (Advance Customisation Queue):**
+- "Implement wishlisting on collection cards for merchantstore.com"
+- "Replace the default Swym heart button with a custom Add to Wishlist CTA"
+- "Build a headless wishlist using the REST API for this Next.js storefront"
 
-**BigCommerce examples:**
-- "Add wishlist buttons to the collection grid on this BigCommerce store"
-- "The Swym widget isn't showing on the product page — can you debug it?"
+**Success / onboarding:**
+- "We're onboarding merchantstore.com -- audit what Swym features are active and what's missing"
+- "Prepare a demo of wishlist on collection and PDP for a prospect pitch"
 
-**Headless / REST API examples:**
-- "We need a headless wishlist integration — walk me through the REST API setup"
-- "Generate the regid for a new shopper and add a product to their list"
+**Support / diagnostics:**
+- "The wishlist button isn't appearing on the PDP for merchantstore.com -- help me debug"
+- "Swym loads on desktop but breaks on mobile -- investigate"
+
+**Agency:**
+- "My client myclientstore.com needs wishlist buttons on their BigCommerce collection grid"
+- "Implement a custom wishlist drawer for the client's Shopify theme"
+
+**Merchant:**
+- "Add a wishlist heart to product cards on my Shopify store"
+- "The wishlist icon colour doesn't match my theme -- how do I change it?"
 
 ---
 
