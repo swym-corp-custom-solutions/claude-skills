@@ -6,8 +6,8 @@ description: >
   to customise, debug, or implement Swym wishlist UI on a Shopify storefront
   without an MCP server — rides the Shopify CLI and standard file tools instead.
 metadata:
-  version: 2.0.0
-  last_updated: 2026-07-01
+  version: 1.0.0
+  last_updated: 2026-06-26
 ---
 
 # ThemeMate (Shopify CLI edition)
