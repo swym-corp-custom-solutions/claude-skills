@@ -68,20 +68,73 @@ This is a one-time setup per machine. Without it, ThemeMate falls back to asking
 **1. Clone this repo**
 ```bash
 git clone https://github.com/swym-corp-custom-solutions/claude-skills.git
+cd claude-skills
 ```
 
-**2. Create the skills directory if it does not exist**
+**2. Run the installer**
 ```bash
-mkdir -p ~/.claude/skills
+bash install.sh
 ```
 
-**3. Copy the skill**
-```bash
-cp -r claude-skills/skills/swym-shopify-thememate-theme-editor ~/.claude/skills/
-```
+This does three things in one step:
+- Copies all skills from `./skills/` into `~/.claude/skills/`
+- Installs `skill-updater.sh` to `~/.claude/`
+- Adds a Claude Code hook that auto-updates skills once per day
 
-**4. Verify**
+**3. Verify**
 Start Claude Code and type `/thememate` — if the skill is installed correctly, Claude activates as ThemeMate.
+
+---
+
+### Updating
+
+#### Auto-update (recommended)
+
+Once installed, skills update themselves automatically. On the first prompt of each Claude Code session (once per calendar day), the updater checks `main` on GitHub. If any skill has a newer version, it is downloaded and the local copy is overwritten. You will see a one-liner confirmation when an update is applied:
+
+```
+[skill-updater] updated swym-shopify-thememate-theme-editor 2.0.0 -> 3.0.0
+```
+
+To force an immediate check (e.g. right after a PR merges to `main`):
+```bash
+rm /tmp/swym-skill-check-$(date +%Y%m%d).lock
+bash ~/.claude/skill-updater.sh
+```
+
+#### Manual update
+
+If you prefer not to use the auto-updater, or need to update immediately:
+```bash
+cd claude-skills
+git pull origin main
+cp skills/swym-shopify-thememate-theme-editor/SKILL.md \
+   ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
+```
+
+To check what version is installed locally:
+```bash
+grep "version:" ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
+```
+
+#### Rollback to a previous version
+
+Each auto-update archives the replaced version locally at:
+```
+~/.claude/skills/<skill-name>/versions/SKILL-X.Y.Z.md
+```
+
+To roll back:
+```bash
+# List available local backups
+ls ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/
+
+# Restore a specific version
+cp ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/SKILL-1.0.0.md \
+   ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
+```
+
+Named version snapshots are also committed to this repo under `skills/<name>/versions/` — see [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ---
 
