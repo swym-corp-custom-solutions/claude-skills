@@ -2,8 +2,9 @@
 
 All notable changes to Swym Claude Skills are documented here.
 
-Each version is archived at `skills/<skill-name>/versions/SKILL-X.Y.Z.md` for rollback.
-To roll back to a specific version locally:
+Superseded versions are archived at `skills/<skill-name>/versions/SKILL-X.Y.Z.md`.
+The archive is written **when a version is replaced**, not when it ships -- so the current
+version is never in `versions/`. To roll back:
 ```bash
 cp skills/swym-shopify-thememate-theme-editor/versions/SKILL-X.Y.Z.md \
    ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
@@ -29,7 +30,7 @@ cp skills/swym-shopify-thememate-theme-editor/versions/SKILL-X.Y.Z.md \
 
 ### [2.0.0] 2026-07-01 — Multi-platform, API catalogue, role system overhaul
 
-Archived at: `skills/swym-shopify-thememate-theme-editor/versions/SKILL-2.0.0.md`
+Current version. Archive will be created at `versions/SKILL-2.0.0.md` when the next version ships.
 
 **Multi-platform scope**
 - BigCommerce promoted from KNOWLEDGE-only to full THEME_EDIT: uses JS API + HANDOFF with Script Manager paste instructions
@@ -66,7 +67,7 @@ Archived at: `skills/swym-shopify-thememate-theme-editor/versions/SKILL-2.0.0.md
 
 ### [1.0.0] 2026-06-26 — Initial release
 
-Archived at: `skills/swym-shopify-thememate-theme-editor/versions/SKILL-1.0.0.md`
+Superseded by 2.0.0. Archived at: `skills/swym-shopify-thememate-theme-editor/versions/SKILL-1.0.0.md`
 
 **Workflow**
 - Local-first workflow: pull theme, implement on feature branch, test with `shopify theme dev`, open PR

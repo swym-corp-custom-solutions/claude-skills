@@ -186,8 +186,15 @@ Changes to ThemeMate affect all team members. Follow this process:
 1. Branch off `main`: `git checkout -b update/<short-description>`
 2. Edit `skills/swym-shopify-thememate-theme-editor/SKILL.md`
 3. **Test in a live session** before opening a PR: copy the edited file to your `~/.claude/skills/` and run a real ThemeMate session on a sandbox merchant to verify the behavior change works as intended
-4. Update `metadata.version` (increment patch for fixes, minor for new behavior) and `metadata.last_updated` in the frontmatter
-5. Add an entry to [CHANGELOG.md](CHANGELOG.md)
-6. Open a PR — include in the body: what behavior changed, why, and which session or merchant surfaced the need
+4. **Archive the current version** -- copy the current `SKILL.md` into `versions/` under its current version number **before** bumping it:
+   ```bash
+   # e.g. if the current version is 2.0.0 and you are shipping 3.0.0:
+   cp skills/swym-shopify-thememate-theme-editor/SKILL.md \
+      skills/swym-shopify-thememate-theme-editor/versions/SKILL-2.0.0.md
+   ```
+   The `versions/` folder holds **superseded** versions only -- the current version is never archived there until it is replaced.
+5. Update `metadata.version` and `metadata.last_updated` in the frontmatter
+6. Add an entry to [CHANGELOG.md](CHANGELOG.md) -- mark the old entry as "Superseded by X.Y.Z" and add a new section for the new version
+7. Open a PR — include in the body: what behavior changed, why, and which session or merchant surfaced the need
 
 Do not merge a skill change that has not been tested in an active ThemeMate session.
