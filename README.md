@@ -46,23 +46,10 @@ shopify auth login   # log in with your Shopify Partner account
 Not required for BigCommerce or headless sessions.
 
 **4. GitHub CLI**
-
-macOS:
-```bash
-brew install gh
-```
-Windows:
-```powershell
-winget install GitHub.cli
-```
-Linux:
-```bash
-sudo apt install gh   # or see https://cli.github.com for other distros
-```
-Then authenticate:
 ```bash
 gh auth login
 ```
+Install via [cli.github.com](https://cli.github.com) if not already present (`brew install gh` on macOS, `winget install GitHub.cli` on Windows).
 Must have access to the `swym-corp-custom-solutions` GitHub org.
 
 **5. Shopify Partner Portal access** _(Shopify storefronts only)_
@@ -97,24 +84,12 @@ git clone https://github.com/swym-corp-custom-solutions/claude-skills.git
 cd claude-skills
 ```
 
-**2. Run the installer for your OS**
-
-**macOS / Linux**
+**2. Run the installer**
 ```bash
 bash install.sh
 ```
 
-**Windows — PowerShell (native)**
-```powershell
-.\install.ps1
-```
-> If you see a script execution policy error, run:
-> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
-
-**Windows — Git Bash or WSL**
-```bash
-bash install.sh
-```
+> **Windows:** use Git Bash or WSL. Both ship with most Git for Windows installs — open "Git Bash" from the Start menu and run the command above.
 
 The installer does three things in one step:
 - Copies all skills from `./skills/` into `~/.claude/skills/`
@@ -137,23 +112,14 @@ Once installed, skills update themselves automatically. On the first prompt of e
 ```
 
 To force an immediate check (e.g. right after a PR merges to `main`):
-
-**macOS / Linux / Git Bash**
 ```bash
 rm /tmp/swym-skill-check-$(date +%Y%m%d).lock
 bash ~/.claude/skill-updater.sh
-```
-**Windows (PowerShell)**
-```powershell
-Remove-Item "$env:TEMP\swym-skill-check-$(Get-Date -Format 'yyyyMMdd').lock" -ErrorAction SilentlyContinue
-powershell -File "$HOME\.claude\skill-updater.ps1"
 ```
 
 #### Manual update
 
 If you prefer not to use the auto-updater, or need to update immediately:
-
-**macOS / Linux / Git Bash**
 ```bash
 cd claude-skills
 git pull origin main
@@ -161,23 +127,9 @@ cp skills/swym-shopify-thememate-theme-editor/SKILL.md \
    ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
 ```
 
-**Windows (PowerShell)**
-```powershell
-cd claude-skills
-git pull origin main
-Copy-Item "skills\swym-shopify-thememate-theme-editor\SKILL.md" `
-  "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\SKILL.md"
-```
-
 To check what version is installed locally:
-
-**macOS / Linux / Git Bash**
 ```bash
 grep "version:" ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
-```
-**Windows (PowerShell)**
-```powershell
-Select-String "version:" "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\SKILL.md"
 ```
 
 #### Rollback to a previous version
@@ -187,7 +139,6 @@ Each auto-update archives the replaced version locally at:
 ~/.claude/skills/<skill-name>/versions/SKILL-X.Y.Z.md
 ```
 
-**macOS / Linux / Git Bash**
 ```bash
 # List available local backups
 ls ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/
@@ -195,16 +146,6 @@ ls ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/
 # Restore a specific version
 cp ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/SKILL-1.0.0.md \
    ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
-```
-
-**Windows (PowerShell)**
-```powershell
-# List available local backups
-Get-ChildItem "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\versions\"
-
-# Restore a specific version
-Copy-Item "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\versions\SKILL-1.0.0.md" `
-  "$HOME\.claude\skills\swym-shopify-thememate-theme-editor\SKILL.md"
 ```
 
 Named version snapshots are also committed to this repo under `skills/<name>/versions/` — see [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
