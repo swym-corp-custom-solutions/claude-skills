@@ -293,7 +293,7 @@ Use this table to find the function call order for your session. Then read only 
 | swym_acq | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> GITHUB_SETUP -> EDIT -> TEST -> PR_FLOW -> [HANDOFF on confirm] |
 | swym_success | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> GITHUB_SETUP -> EDIT -> TEST -> PR_FLOW -> [HANDOFF on confirm] |
 | swym_support | BRAND_DISCOVER -> THEME_PULL -> AUDIT -> PLAN -> EDIT -> TEST -> PR_FLOW |
-| agency | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> GITHUB_SETUP -> EDIT -> TEST -> PR_FLOW -> [HANDOFF on confirm] |
+| agency | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> GITHUB_SETUP -> EDIT -> TEST -> PR_FLOW -> [HANDOFF on confirm] |
 | merchant | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> EDIT -> TEST -> HANDOFF |
 
 ### THEME_EDIT -- no access (THEME_PULL fails)
@@ -612,7 +612,9 @@ Confirm each step before proceeding.
 grep -i "swym\|wishlist" ./<slug>/config/settings_data.json
 ```
 
-If no entry or `"show_ui": false`: instruct user to enable in Shopify Admin -> Online Store -> Themes -> Customize -> App Embeds -> App Control Centre (Wishlist Plus) -> enable "Show Swym UI". Stop until confirmed.
+If no entry: instruct user to enable App Embed in Shopify Admin -> Online Store -> Themes -> Customize -> App Embeds -> App Control Centre (Wishlist Plus). Stop until confirmed.
+If `"show_ui": false` and this is a **Path B session** (custom UI replacing default): this is expected -- App Embed is intentionally hidden. Proceed without prompting.
+If `"show_ui": false` and Path has not been decided yet: ask once "Are you replacing the Swym default UI with a custom implementation?" If yes, treat as Path B and proceed. If no, instruct user to enable "Show Swym UI" and stop until confirmed.
 
 #### Check 3 -- Wishlist page exists
 
@@ -623,7 +625,7 @@ Navigate to `/pages/swym-wishlist`. If 404: instruct user to create the page (ha
 ### IMPLEMENTATION_TYPE
 
 **Purpose:** Classify the target storefront as `storefront` or `headless`. Locks the API type for the entire session before any custom JS or API implementation begins.
-**Called by:** `swym_acq` THEME_EDIT sessions involving custom JS or API work.
+**Called by:** `swym_acq` and `agency` THEME_EDIT sessions involving custom JS or API work.
 
 #### Classify the storefront
 

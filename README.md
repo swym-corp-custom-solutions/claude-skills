@@ -115,6 +115,21 @@ rm /tmp/swym-skill-check-$(date +%Y%m%d).lock
 bash ~/.claude/skill-updater.sh
 ```
 
+#### Disable auto-update
+
+To stop the daily hook from running, remove the `UserPromptSubmit` entry from `~/.claude/settings.json`:
+```bash
+# Open in your editor and remove the "UserPromptSubmit" block under "hooks"
+open ~/.claude/settings.json
+```
+
+Or delete the updater script entirely:
+```bash
+rm ~/.claude/skill-updater.sh
+```
+
+The hook will silently no-op if the script is missing, so either approach is safe.
+
 #### Manual update
 
 If you prefer not to use the auto-updater, or need to update immediately:

@@ -14,10 +14,12 @@ LOCK_FILE="/tmp/swym-skill-check-$(date +%Y%m%d).lock"
 
 # Only run once per calendar day
 [ -f "$LOCK_FILE" ] && exit 0
-touch "$LOCK_FILE"
 
-# Requires gh CLI to be authenticated
+# Requires gh CLI -- check before burning the day's lock
 command -v gh &>/dev/null || exit 0
+command -v python3 &>/dev/null || exit 0
+
+touch "$LOCK_FILE"
 
 # Discover all skills published to the repo's main branch
 SKILL_NAMES=$(gh api "repos/$REPO/contents/skills?ref=main" \
@@ -28,31 +30,44 @@ while IFS= read -r SKILL_NAME; do
   REMOTE_PATH="skills/$SKILL_NAME/SKILL.md"
   LOCAL_SKILL="$SKILLS_DIR/$SKILL_NAME/SKILL.md"
 
-  # Fetch remote SKILL.md content from main branch
-  REMOTE_CONTENT=$(gh api "repos/$REPO/contents/$REMOTE_PATH?ref=main" \
-    --jq '.content' 2>/dev/null | base64 -d 2>/dev/null)
-  [ -z "$REMOTE_CONTENT" ] && continue
+  # Fetch and decode remote SKILL.md via jq @base64d (portable -- no base64 binary needed)
+  REMOTE_TMP=$(mktemp)
+  gh api "repos/$REPO/contents/$REMOTE_PATH?ref=main" \
+    --jq '.content | gsub("\n";"") | @base64d' > "$REMOTE_TMP" 2>/dev/null
+  [ -s "$REMOTE_TMP" ] || { rm -f "$REMOTE_TMP"; continue; }
 
-  REMOTE_VERSION=$(echo "$REMOTE_CONTENT" | grep -m1 "^  version:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+  REMOTE_VERSION=$(grep -m1 "^  version:" "$REMOTE_TMP" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
 
   # --- Install (first time) ---
   if [ ! -f "$LOCAL_SKILL" ]; then
     mkdir -p "$(dirname "$LOCAL_SKILL")"
-    echo "$REMOTE_CONTENT" > "$LOCAL_SKILL"
+    cp "$REMOTE_TMP" "$LOCAL_SKILL"
     echo "[skill-updater] installed $SKILL_NAME ${REMOTE_VERSION:-unknown}"
+    rm -f "$REMOTE_TMP"
     continue
   fi
 
   # --- Update (version check) ---
   LOCAL_VERSION=$(grep -m1 "^  version:" "$LOCAL_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-  if [ -z "$LOCAL_VERSION" ] || [ -z "$REMOTE_VERSION" ]; then continue; fi
-  [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ] && continue
+  if [ -z "$LOCAL_VERSION" ] || [ -z "$REMOTE_VERSION" ]; then
+    rm -f "$REMOTE_TMP"; continue
+  fi
+  if [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ]; then
+    rm -f "$REMOTE_TMP"; continue
+  fi
 
-  # Skip if local is already ahead
-  NEWER=$(printf '%s\n%s\n' "$LOCAL_VERSION" "$REMOTE_VERSION" | sort -V | tail -1)
-  [ "$NEWER" = "$LOCAL_VERSION" ] && continue
+  # Skip if local is already ahead (python3 semver -- portable, no sort -V needed)
+  IS_NEWER=$(python3 -c "
+a = tuple(int(x) for x in '$REMOTE_VERSION'.split('.'))
+b = tuple(int(x) for x in '$LOCAL_VERSION'.split('.'))
+print('yes' if a > b else 'no')
+" 2>/dev/null)
+  if [ "$IS_NEWER" != "yes" ]; then
+    rm -f "$REMOTE_TMP"; continue
+  fi
 
-  echo "$REMOTE_CONTENT" > "$LOCAL_SKILL"
+  cp "$REMOTE_TMP" "$LOCAL_SKILL"
+  rm -f "$REMOTE_TMP"
   echo "[skill-updater] updated $SKILL_NAME $LOCAL_VERSION -> $REMOTE_VERSION"
 
 done <<< "$SKILL_NAMES"
