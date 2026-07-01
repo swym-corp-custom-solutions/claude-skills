@@ -8,7 +8,7 @@ Claude Code skills used by the Swym ACQ and solutions team. Each skill is a self
 
 | Skill | Invocation | Description |
 |-------|-----------|-------------|
-| [ThemeMate](skills/swym-shopify-thememate-theme-editor/) | `/thememate` | Implement and debug Swym Wishlist UI on Shopify, BigCommerce, and headless storefronts |
+| [ThemeMate](skills/swym-thememate/) | `/thememate` | Implement and debug Swym Wishlist UI on Shopify, BigCommerce, and headless storefronts |
 
 ---
 
@@ -108,7 +108,7 @@ Start Claude Code and type `/thememate` — if the skill is installed correctly,
 Once installed, skills update themselves automatically. On the first prompt of each Claude Code session (once per calendar day), the updater checks `main` on GitHub. If any skill has a newer version, it is downloaded and the local copy is overwritten. You will see a one-liner confirmation when an update is applied:
 
 ```
-[skill-updater] updated swym-shopify-thememate-theme-editor 2.0.0 -> 3.0.0
+[skill-updater] updated swym-thememate 2.0.0 -> 3.0.0
 ```
 
 To force an immediate check (e.g. right after a PR merges to `main`):
@@ -123,13 +123,13 @@ If you prefer not to use the auto-updater, or need to update immediately:
 ```bash
 cd claude-skills
 git pull origin main
-cp skills/swym-shopify-thememate-theme-editor/SKILL.md \
-   ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
+cp skills/swym-thememate/SKILL.md \
+   ~/.claude/skills/swym-thememate/SKILL.md
 ```
 
 To check what version is installed locally:
 ```bash
-grep "version:" ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
+grep "version:" ~/.claude/skills/swym-thememate/SKILL.md
 ```
 
 #### Rollback to a previous version
@@ -141,11 +141,11 @@ Each auto-update archives the replaced version locally at:
 
 ```bash
 # List available local backups
-ls ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/
+ls ~/.claude/skills/swym-thememate/versions/
 
 # Restore a specific version
-cp ~/.claude/skills/swym-shopify-thememate-theme-editor/versions/SKILL-1.0.0.md \
-   ~/.claude/skills/swym-shopify-thememate-theme-editor/SKILL.md
+cp ~/.claude/skills/swym-thememate/versions/SKILL-1.0.0.md \
+   ~/.claude/skills/swym-thememate/SKILL.md
 ```
 
 Named version snapshots are also committed to this repo under `skills/<name>/versions/` — see [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
@@ -192,13 +192,13 @@ ThemeMate identifies your role (Swym ACQ, Success, Support, agency, or merchant)
 Changes to ThemeMate affect all team members. Follow this process:
 
 1. Branch off `main`: `git checkout -b update/<short-description>`
-2. Edit `skills/swym-shopify-thememate-theme-editor/SKILL.md`
+2. Edit `skills/swym-thememate/SKILL.md`
 3. **Test in a live session** before opening a PR: copy the edited file to your `~/.claude/skills/` and run a real ThemeMate session on a sandbox merchant to verify the behavior change works as intended
 4. **Archive the current version** -- copy the current `SKILL.md` into `versions/` under its current version number **before** bumping it:
    ```bash
    # e.g. if the current version is 2.0.0 and you are shipping 3.0.0:
-   cp skills/swym-shopify-thememate-theme-editor/SKILL.md \
-      skills/swym-shopify-thememate-theme-editor/versions/SKILL-2.0.0.md
+   cp skills/swym-thememate/SKILL.md \
+      skills/swym-thememate/versions/SKILL-2.0.0.md
    ```
    The `versions/` folder holds **superseded** versions only -- the current version is never archived there until it is replaced.
 5. Update `metadata.version` and `metadata.last_updated` in the frontmatter
