@@ -71,14 +71,28 @@ git clone https://github.com/swym-corp-custom-solutions/claude-skills.git
 cd claude-skills
 ```
 
-**2. Run the installer**
+**2. Run the installer for your OS**
+
+**macOS / Linux**
 ```bash
 bash install.sh
 ```
 
-This does three things in one step:
+**Windows — PowerShell (native)**
+```powershell
+.\install.ps1
+```
+> If you see a script execution policy error, run:
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+
+**Windows — Git Bash or WSL**
+```bash
+bash install.sh
+```
+
+The installer does three things in one step:
 - Copies all skills from `./skills/` into `~/.claude/skills/`
-- Installs `skill-updater.sh` to `~/.claude/`
+- Installs the auto-updater script to `~/.claude/`
 - Adds a Claude Code hook that auto-updates skills once per day
 
 **3. Verify**
@@ -97,9 +111,16 @@ Once installed, skills update themselves automatically. On the first prompt of e
 ```
 
 To force an immediate check (e.g. right after a PR merges to `main`):
+
+**macOS / Linux / Git Bash**
 ```bash
 rm /tmp/swym-skill-check-$(date +%Y%m%d).lock
 bash ~/.claude/skill-updater.sh
+```
+**Windows (PowerShell)**
+```powershell
+Remove-Item "$env:TEMP\swym-skill-check-$(Get-Date -Format 'yyyyMMdd').lock" -ErrorAction SilentlyContinue
+powershell -File "$HOME\.claude\skill-updater.ps1"
 ```
 
 #### Manual update
