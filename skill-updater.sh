@@ -45,19 +45,14 @@ while IFS= read -r SKILL_NAME; do
 
   # --- Update (version check) ---
   LOCAL_VERSION=$(grep -m1 "^  version:" "$LOCAL_SKILL" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-  [ -z "$LOCAL_VERSION" ] || [ -z "$REMOTE_VERSION" ] && continue
+  if [ -z "$LOCAL_VERSION" ] || [ -z "$REMOTE_VERSION" ]; then continue; fi
   [ "$LOCAL_VERSION" = "$REMOTE_VERSION" ] && continue
 
   # Skip if local is already ahead
   NEWER=$(printf '%s\n%s\n' "$LOCAL_VERSION" "$REMOTE_VERSION" | sort -V | tail -1)
   [ "$NEWER" = "$LOCAL_VERSION" ] && continue
 
-  # Archive current version before overwriting
-  VERSIONS_DIR="$(dirname "$LOCAL_SKILL")/versions"
-  mkdir -p "$VERSIONS_DIR"
-  cp "$LOCAL_SKILL" "$VERSIONS_DIR/SKILL-${LOCAL_VERSION}.md"
-
   echo "$REMOTE_CONTENT" > "$LOCAL_SKILL"
-  echo "[skill-updater] updated $SKILL_NAME $LOCAL_VERSION -> $REMOTE_VERSION (previous saved to versions/SKILL-${LOCAL_VERSION}.md)"
+  echo "[skill-updater] updated $SKILL_NAME $LOCAL_VERSION -> $REMOTE_VERSION"
 
 done <<< "$SKILL_NAMES"

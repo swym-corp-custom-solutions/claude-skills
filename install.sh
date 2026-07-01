@@ -12,6 +12,13 @@
 
 set -e
 
+# Preflight checks
+command -v python3 &>/dev/null || {
+  echo "Error: python3 is required to configure the Claude Code hook."
+  echo "Install Python 3 from https://python.org and re-run this script."
+  exit 1
+}
+
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_SRC="$REPO_DIR/skills"
 SKILLS_DEST="$HOME/.claude/skills"

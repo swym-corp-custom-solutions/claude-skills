@@ -568,8 +568,8 @@ grep -n "card__media\|card-wrapper\|card__heading" ./<slug>/snippets/card-produc
 # 4. Layout anchors
 grep -n "content_for_header\|</body>" ./<slug>/layout/theme.liquid
 
-# 5. CSS custom properties (use \s* -- vars are indented inside selectors in most themes)
-grep -n "^\s*--" ./<slug>/assets/base.css ./<slug>/assets/theme.css 2>/dev/null | head -80
+# 5. CSS custom properties (vars are indented inside selectors in most themes)
+grep -n "^[[:space:]]*--" ./<slug>/assets/base.css ./<slug>/assets/theme.css 2>/dev/null | head -80
 
 # 6. PDP button anchor
 grep -n "product-form__buttons\|buy-buttons\|name=\"add\"" ./<slug>/snippets/buy-buttons.liquid
