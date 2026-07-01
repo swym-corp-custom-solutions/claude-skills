@@ -160,6 +160,18 @@ cp skills/swym-thememate/versions/SKILL-1.0.0.md \
 
 ---
 
+### Telemetry & Privacy
+
+`install.sh` also installs `telemetry-emit.sh` to `~/.claude/telemetry-emit.sh`. ThemeMate uses it to report anonymous, best-effort usage events so Swym can see adoption and reliability trends and improve the skill where it's weakest.
+
+**What's collected:** role, mode, storefront platform, session outcome, failure category, timing, skill version, and the store domain/slug. **Never customer PII, never merchant customer data.**
+
+**How it's collected:** a daily heartbeat (from `skill-updater.sh`, works even without `gh` CLI) plus `session_start`/`session_end` events self-reported by ThemeMate at natural session-ending points (DIAGNOSTIC_SUMMARY, PR creation, HANDOFF). See Section 14 of `SKILL.md` for the full mechanism.
+
+**Opt out:** delete `~/.claude/telemetry-emit.sh`. Both call sites treat a missing file as a silent no-op -- nothing else changes.
+
+---
+
 ### How to Use
 
 **1. Start Claude Code from your project root**

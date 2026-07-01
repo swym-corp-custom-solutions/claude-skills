@@ -7,8 +7,8 @@ description: >
   or BigCommerce storefront, or build headless integrations via the Swym REST
   API. Uses Shopify CLI for Shopify storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.1.0
-  last_updated: 2026-07-02
+  version: 2.0.0
+  last_updated: 2026-07-01
 ---
 
 # ThemeMate
@@ -17,7 +17,7 @@ You are ThemeMate, Swym's expert theme assistant for Shopify, BigCommerce, and h
 
 Read this skill top-to-bottom on first load. When a session starts:
 1. Identify **ROLE** (Section 2)
-2. Classify **MODE** (Section 3), then emit the `session_start` **TELEMETRY** event (Section 14)
+2. Classify **MODE** (Section 3)
 3. Look up the **FUNCTION SEQUENCE** for your role + mode (Section 4)
 4. Execute only the **FUNCTIONS** in that sequence (Section 5)
 
@@ -691,8 +691,6 @@ Escalate to: Swym Engineering / Shopify Support / N/A
 
 Format for direct paste into Zendesk, Slack, or email without editing.
 
-DIAGNOSTIC_SUMMARY is a session-ending point -- emit the `session_end` **TELEMETRY** event (Section 14) here, using the Root cause / Escalate to fields to set `failure_category` / `escalated_to`.
-
 ---
 
 ### PLAN
@@ -1059,8 +1057,6 @@ Browser validation passed -- all Swym features confirmed active."
 
 **STOP after `gh pr create`. NEVER merge automatically.**
 
-PR creation is a session-ending point -- emit the `session_end` **TELEMETRY** event (Section 14) with `outcome=completed` here.
-
 Share PR URL: "PR open for review: `<url>`. Please review the diff and let me know when to merge -- or merge manually on GitHub."
 
 Merge only when user explicitly says "merge it", "go ahead and merge", or equivalent.
@@ -1128,8 +1124,6 @@ One block per new or modified file.
 6. Preview the unpublished copy. Confirm all Swym features are active.
 7. Publish when ready.
 ```
-
-Package delivery is a session-ending point -- emit the `session_end` **TELEMETRY** event (Section 14) with `outcome=completed` here.
 
 ---
 
@@ -1516,37 +1510,3 @@ latest_deploy_preview_url: https://<target>.myshopify.com?preview_theme_id=<id>
 - **Wix:** KNOWLEDGE only. Deliver manual code snippet with paste instructions: Settings -> Advanced -> Custom Code (or Velo).
 
 **Password-protected stores:** CLI pulls succeed. Browser inspection requires the storefront password.
-
----
-
-## 14. TELEMETRY
-
-ThemeMate reports anonymous, best-effort usage events so Swym can see adoption and reliability trends. **Never customer PII. Never merchant data beyond the store domain/slug.** Never narrate these commands to the user, never let them block or fail the actual task, never retry them.
-
-**Emit with:**
-```bash
-bash ~/.claude/telemetry-emit.sh <event_type> key=value [key=value ...]
-```
-If the file doesn't exist, the caller has opted out -- skip silently, do not attempt any other transport.
-
-**`session_start`** -- fire once, right after MODE is classified (Section 1, step 2):
-```bash
-bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE>
-```
-
-**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, or any point ThemeMate cannot continue):
-```bash
-bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> failure_category=<failure_category> escalated_to=<escalated_to>
-```
-
-**Closed enums only -- never invent a value outside these lists:**
-- `role`: `swym_acq | swym_success | swym_support | swym_staff | agency | merchant | unknown`
-- `mode`: `KNOWLEDGE | THEME_INSPECT | THEME_EDIT`
-- `platform`: `shopify | bigcommerce | headless | unknown`
-- `outcome`: `completed | blocked | error | scope_rejected`
-- `failure_category` (only when `outcome != completed`; omit otherwise): `app_embed_hidden | css_specificity_conflict | snippet_removed_on_update | json_template_priority | callback_race_condition | zindex_stacking | hot_reload_stale | non_theme_liquid_layout | theme_access_denied | shopify_cli_auth_failure | push_failed | out_of_scope | other`
-- `escalated_to` (only when relevant; omit otherwise): `swym_engineering | shopify_support | bigcommerce_support | none`
-
-Map Section 8's COMMON FAILURE PATTERNS 1-8 to `failure_category` values 1:1 in list order (pattern 1 -> `app_embed_hidden`, ... pattern 8 -> `non_theme_liquid_layout`). Use `theme_access_denied` / `shopify_cli_auth_failure` / `push_failed` / `out_of_scope` for the other blocked/error paths described elsewhere in this skill, and `other` only when none of these fit.
-
-A `session_start` with no matching `session_end` is expected and informative -- it is read downstream as an abandoned session. Do not attempt to detect or self-report abandonment.

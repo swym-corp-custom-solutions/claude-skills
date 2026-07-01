@@ -24,6 +24,8 @@ SKILLS_SRC="$REPO_DIR/skills"
 SKILLS_DEST="$HOME/.claude/skills"
 UPDATER_SRC="$REPO_DIR/skill-updater.sh"
 UPDATER_DEST="$HOME/.claude/skill-updater.sh"
+TELEMETRY_SRC="$REPO_DIR/telemetry-emit.sh"
+TELEMETRY_DEST="$HOME/.claude/telemetry-emit.sh"
 SETTINGS="$HOME/.claude/settings.json"
 
 echo "Swym Claude Skills installer"
@@ -49,6 +51,14 @@ echo "Installing auto-updater..."
 cp "$UPDATER_SRC" "$UPDATER_DEST"
 chmod +x "$UPDATER_DEST"
 echo "  installed $UPDATER_DEST"
+
+# --- 2b. Install telemetry emitter --------------------------------------
+echo ""
+echo "Installing telemetry emitter..."
+cp "$TELEMETRY_SRC" "$TELEMETRY_DEST"
+chmod +x "$TELEMETRY_DEST"
+echo "  installed $TELEMETRY_DEST"
+echo "  (delete this file at any time to opt out of ThemeMate usage telemetry)"
 
 # --- 3. Wire Claude Code hook -----------------------------------------
 echo ""
