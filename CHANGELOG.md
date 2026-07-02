@@ -42,9 +42,18 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## ThemeMate
 
+### [2.1.1] 2026-07-02 — Fix broken CDP browser setup instructions
+
+Current version. Archive will be created at `versions/SKILL-2.1.1.md` when the next version ships.
+
+**Section 6 -- BROWSER SETUP (rewritten)**
+- Old Step 1 (`open -a "Google Chrome" --args --remote-debugging-port=9222`) silently failed whenever Chrome was already running -- macOS `open -a` just refocuses the existing process and ignores new `--args`, so the debug port never opened
+- New sequence: fully quit Chrome (Step 0) -> identify the real profile folder holding the user's logged-in session (Step 1) -> relaunch with `--remote-debugging-port` against that real `--user-data-dir`/`--profile-directory` so cookies/login carry over instead of a blank profile (Step 2) -> verify with `curl http://localhost:9222/json/version` before touching Playwright (Step 3) -> configure the Playwright MCP CDP endpoint (Step 4, unchanged from old Step 2)
+- Added a troubleshooting line distinguishing a Chrome/port problem (redo Steps 0-3) from a Playwright MCP config problem (restart the MCP server)
+
 ### [2.1.0] 2026-07-02 — Usage telemetry instrumentation
 
-Current version. Archive will be created at `versions/SKILL-2.1.0.md` when the next version ships.
+Superseded by 2.1.1. Archived at `versions/SKILL-2.1.0.md`.
 
 **Section 14 -- TELEMETRY (new)**
 - `session_start` fired after MODE classification; `session_end` fired at DIAGNOSTIC_SUMMARY, PR_FLOW (after `gh pr create`), or HANDOFF package delivery

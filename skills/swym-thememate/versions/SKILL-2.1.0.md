@@ -7,7 +7,7 @@ description: >
   or BigCommerce storefront, or build headless integrations via the Swym REST
   API. Uses Shopify CLI for Shopify storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.1.1
+  version: 2.1.0
   last_updated: 2026-07-02
 ---
 
@@ -1137,41 +1137,13 @@ Package delivery is a session-ending point -- emit the `session_end` **TELEMETRY
 
 By default, Playwright opens a new private window -- no Partner Portal session, no store password bypass. To use the existing authenticated Chrome window instead:
 
-**Step 0 -- Fully quit Chrome first.**
-`open -a "Google Chrome" --args ...` silently fails to apply new flags whenever Chrome is already running -- macOS `open -a` just refocuses the existing process and ignores the new `--args`, so the debug port never actually opens. Quit Chrome completely before relaunching it with debugging on:
+**Step 1 -- Launch Chrome with remote debugging:**
 ```bash
-pkill -9 -f "Google Chrome"
-sleep 2
-ps aux | grep -i "Google Chrome" | grep -v grep   # must return nothing
+open -a "Google Chrome" --args --remote-debugging-port=9222
 ```
+If Chrome is already open without this flag, quit and relaunch with it.
 
-**Step 1 -- Identify the real profile folder.**
-Chrome profiles are folders (`Default`, `Profile 1`, ...) on disk, not the display names shown in the Chrome UI. Find which folder holds the user's logged-in session (e.g. Shopify Partner Portal) so the debug relaunch reuses it instead of starting a blank throwaway profile:
-```bash
-cd ~/Library/Application\ Support/Google/Chrome
-for d in Default Profile*; do
-  if [ -f "$d/Preferences" ]; then
-    name=$(python3 -c "import json; print(json.load(open('$d/Preferences'))['profile']['name'])" 2>/dev/null)
-    echo "$d -> $name"
-  fi
-done
-```
-
-**Step 2 -- Relaunch with debugging on, using the real user-data-dir + that profile:**
-```bash
-open -a "Google Chrome" --args --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/Library/Application Support/Google/Chrome" \
-  --profile-directory="Profile 1"
-```
-Replace `"Profile 1"` with the folder identified in Step 1 -- this preserves cookies and the existing login instead of a blank profile. **Don't** run a second, regular Chrome window against the same `--user-data-dir` while the debug instance is up; Chrome treats that as a profile-in-use conflict.
-
-**Step 3 -- Verify before touching Playwright:**
-```bash
-curl -s http://localhost:9222/json/version
-```
-Must return JSON containing `"Browser": "Chrome/..."`. Do not proceed to any Playwright tool calls until this succeeds. A profile picker on first launch of this combination is expected -- dismiss it and continue.
-
-**Step 4 -- Add CDP endpoint to Playwright MCP config (one-time).**
+**Step 2 -- Add CDP endpoint to Playwright MCP config (one-time).**
 In `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude Desktop), find the Playwright MCP server entry and add to its `args`:
 ```json
 "--cdp-endpoint", "http://localhost:9222"
@@ -1180,8 +1152,6 @@ In `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude Deskto
 Once set up: Playwright connects to the existing Chrome window. Partner Portal sessions, dev theme previews, and Shopify admin are all reachable.
 
 **IPv4/IPv6 note:** Chrome defaults to IPv4 (`127.0.0.1:9222`). Playwright may try IPv6 (`::1:9222`). If connection fails, use `--cdp-endpoint http://127.0.0.1:9222` explicitly.
-
-**Troubleshooting:** if Step 3's `curl` fails, the problem is Chrome/the port -- redo Steps 0-3, don't touch the Playwright config. If `curl` succeeds but Playwright still can't connect, the MCP server likely needs a restart to pick up the Step 4 config change.
 
 **If not set up:** BRAND_DISCOVER detects this at the CDP pre-step and offers Path Y (partial, file-only analysis).
 
