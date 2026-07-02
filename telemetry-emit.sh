@@ -96,8 +96,11 @@ print(json.dumps(fields))
 
 [ -n "$PAYLOAD" ] || exit 0
 
-curl -sS -L --max-time 3 -X POST "$ENDPOINT_URL" \
-  -H "Content-Type: application/json" \
-  -d "$PAYLOAD" >/dev/null 2>&1
+# Backgrounded and disowned so the caller never waits on network I/O -- a
+# blocking `curl` here would contradict the "NEVER blocks" contract above,
+# even bounded by --max-time.
+( curl -sS -L --max-time 3 -X POST "$ENDPOINT_URL" \
+    -H "Content-Type: application/json" \
+    -d "$PAYLOAD" >/dev/null 2>&1 & disown ) 2>/dev/null
 
 exit 0

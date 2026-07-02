@@ -21,9 +21,12 @@ HEARTBEAT_LOCK="/tmp/swym-thememate-heartbeat-$(date +%Y%m%d).lock"
 # machines with no gh CLI (e.g. merchants) even though the update check below
 # exits early for them. Never blocks the rest of this script.
 TELEMETRY_SCRIPT="$HOME/.claude/telemetry-emit.sh"
-if [ ! -f "$HEARTBEAT_LOCK" ]; then
+# Gate on the script's existence too -- claiming today's lock when the script
+# is missing would make opt-out (deleting telemetry-emit.sh) a non-op AND
+# block heartbeat for the rest of the day if the user restores it.
+if [ -f "$TELEMETRY_SCRIPT" ] && [ ! -f "$HEARTBEAT_LOCK" ]; then
   touch "$HEARTBEAT_LOCK" 2>/dev/null
-  [ -f "$TELEMETRY_SCRIPT" ] && bash "$TELEMETRY_SCRIPT" heartbeat >/dev/null 2>&1
+  bash "$TELEMETRY_SCRIPT" heartbeat >/dev/null 2>&1
 fi
 
 # Requires gh CLI -- check before burning the day's lock

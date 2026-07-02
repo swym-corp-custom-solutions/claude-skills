@@ -26,6 +26,7 @@ UPDATER_SRC="$REPO_DIR/skill-updater.sh"
 UPDATER_DEST="$HOME/.claude/skill-updater.sh"
 TELEMETRY_SRC="$REPO_DIR/telemetry-emit.sh"
 TELEMETRY_DEST="$HOME/.claude/telemetry-emit.sh"
+TELEMETRY_OPTOUT_MARKER="$HOME/.claude/.thememate-telemetry-optout"
 SETTINGS="$HOME/.claude/settings.json"
 
 echo "Swym Claude Skills installer"
@@ -54,11 +55,18 @@ echo "  installed $UPDATER_DEST"
 
 # --- 2b. Install telemetry emitter --------------------------------------
 echo ""
-echo "Installing telemetry emitter..."
-cp "$TELEMETRY_SRC" "$TELEMETRY_DEST"
-chmod +x "$TELEMETRY_DEST"
-echo "  installed $TELEMETRY_DEST"
-echo "  (delete this file at any time to opt out of ThemeMate usage telemetry)"
+if [ -f "$TELEMETRY_OPTOUT_MARKER" ]; then
+  echo "Skipping telemetry emitter -- opt-out marker found at $TELEMETRY_OPTOUT_MARKER"
+  rm -f "$TELEMETRY_DEST"
+else
+  echo "Installing telemetry emitter..."
+  cp "$TELEMETRY_SRC" "$TELEMETRY_DEST"
+  chmod +x "$TELEMETRY_DEST"
+  echo "  installed $TELEMETRY_DEST"
+  echo "  Opt out any time:"
+  echo "    - one install:  rm $TELEMETRY_DEST"
+  echo "    - permanently:  touch $TELEMETRY_OPTOUT_MARKER  (survives future installs/updates)"
+fi
 
 # --- 3. Wire Claude Code hook -----------------------------------------
 echo ""
