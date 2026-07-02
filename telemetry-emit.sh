@@ -30,11 +30,14 @@ command -v curl &>/dev/null || exit 0
 [ -n "$EVENT" ] || exit 0
 
 INSTALL_ID_FILE="$HOME/.claude/.thememate-install-id"
-if [ ! -f "$INSTALL_ID_FILE" ]; then
+# -s (exists AND non-empty) catches both "never created" and "previous write
+# failed/truncated" -- either way, regenerate rather than ship a blank id.
+if [ ! -s "$INSTALL_ID_FILE" ]; then
   mkdir -p "$(dirname "$INSTALL_ID_FILE")" 2>/dev/null
   python3 -c "import uuid; print(uuid.uuid4())" > "$INSTALL_ID_FILE" 2>/dev/null
 fi
 INSTALL_ID=$(cat "$INSTALL_ID_FILE" 2>/dev/null)
+[ -n "$INSTALL_ID" ] || exit 0
 
 SKILL_VERSION=$(grep -m1 "^  version:" "$HOME/.claude/skills/swym-thememate/SKILL.md" 2>/dev/null \
   | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
@@ -43,23 +46,51 @@ TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)
 
 # Remaining args are key=value pairs -- passed through argv so no
 # shell-escaping of LLM-supplied values is needed to build valid JSON.
+# Whitelisted keys + closed enums + a length cap keep this a fixed-shape,
+# bounded-size payload even though the caller (an LLM) is not fully trusted --
+# unknown keys, out-of-enum values, and oversized values are dropped, not sent.
 PAYLOAD=$(python3 -c "
 import json, sys
+
+MAX_LEN = 128
+ALLOWED_KEYS = {
+    'session_id', 'role', 'mode', 'platform', 'outcome',
+    'failure_category', 'escalated_to', 'store_domain',
+}
+ENUMS = {
+    'role': {'swym_acq', 'swym_success', 'swym_support', 'swym_staff', 'agency', 'merchant', 'unknown'},
+    'mode': {'KNOWLEDGE', 'THEME_INSPECT', 'THEME_EDIT'},
+    'platform': {'shopify', 'bigcommerce', 'headless', 'unknown'},
+    'outcome': {'completed', 'blocked', 'error', 'scope_rejected'},
+    'failure_category': {
+        'app_embed_hidden', 'css_specificity_conflict', 'snippet_removed_on_update',
+        'json_template_priority', 'callback_race_condition', 'zindex_stacking',
+        'hot_reload_stale', 'non_theme_liquid_layout', 'theme_access_denied',
+        'shopify_cli_auth_failure', 'push_failed', 'out_of_scope', 'other',
+    },
+    'escalated_to': {'swym_engineering', 'shopify_support', 'bigcommerce_support', 'none'},
+}
 
 event, token, install_id, skill_version, ts = sys.argv[1:6]
 fields = {
     'schema_version': 1,
     'skill': 'thememate',
-    'skill_version': skill_version,
-    'install_id': install_id,
-    'event': event,
+    'skill_version': skill_version[:MAX_LEN],
+    'install_id': install_id[:MAX_LEN],
+    'event': event[:MAX_LEN],
     'ts': ts,
     'token': token,
 }
 for pair in sys.argv[6:]:
-    if '=' in pair:
-        k, v = pair.split('=', 1)
-        fields[k] = v
+    if '=' not in pair:
+        continue
+    k, v = pair.split('=', 1)
+    if k not in ALLOWED_KEYS:
+        continue
+    v = v[:MAX_LEN]
+    if k in ENUMS and v not in ENUMS[k]:
+        continue
+    fields[k] = v
 print(json.dumps(fields))
 " "$EVENT" "$TOKEN" "$INSTALL_ID" "$SKILL_VERSION" "$TS" "$@" 2>/dev/null)
 

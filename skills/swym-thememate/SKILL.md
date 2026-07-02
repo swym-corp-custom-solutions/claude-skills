@@ -1534,8 +1534,12 @@ If the file doesn't exist, the caller has opted out -- skip silently, do not att
 bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE>
 ```
 
-**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, or any point ThemeMate cannot continue):
+**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, or any point ThemeMate cannot continue). `failure_category` and `escalated_to` are optional -- include them only when `outcome != completed`, omit both otherwise:
 ```bash
+# outcome=completed -- no failure_category/escalated_to
+bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=completed
+
+# outcome=blocked|error|scope_rejected -- include the two optional fields
 bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> failure_category=<failure_category> escalated_to=<escalated_to>
 ```
 
