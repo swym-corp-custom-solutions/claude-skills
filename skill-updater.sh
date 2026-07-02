@@ -11,9 +11,23 @@
 REPO="swym-corp-custom-solutions/claude-skills"
 SKILLS_DIR="$HOME/.claude/skills"
 LOCK_FILE="/tmp/swym-skill-check-$(date +%Y%m%d).lock"
+HEARTBEAT_LOCK="/tmp/swym-thememate-heartbeat-$(date +%Y%m%d).lock"
 
 # Only run once per calendar day
 [ -f "$LOCK_FILE" ] && exit 0
+
+# --- Telemetry heartbeat (deterministic, no gh required) ---------------
+# Fires at most once per calendar day, on its own lock, so it still runs on
+# machines with no gh CLI (e.g. merchants) even though the update check below
+# exits early for them. Never blocks the rest of this script.
+TELEMETRY_SCRIPT="$HOME/.claude/telemetry-emit.sh"
+# Gate on the script's existence too -- claiming today's lock when the script
+# is missing would make opt-out (deleting telemetry-emit.sh) a non-op AND
+# block heartbeat for the rest of the day if the user restores it.
+if [ -f "$TELEMETRY_SCRIPT" ] && [ ! -f "$HEARTBEAT_LOCK" ]; then
+  touch "$HEARTBEAT_LOCK" 2>/dev/null
+  bash "$TELEMETRY_SCRIPT" heartbeat >/dev/null 2>&1
+fi
 
 # Requires gh CLI -- check before burning the day's lock
 command -v gh &>/dev/null || exit 0

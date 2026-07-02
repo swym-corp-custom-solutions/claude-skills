@@ -23,13 +23,38 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 - Daily version check against GitHub `main` branch
 - Auto-installs missing skills and auto-updates outdated ones
 
+### [telemetry] 2026-07-02 — ThemeMate usage telemetry
+
+**`telemetry-emit.sh`** (new)
+- Anonymous, best-effort event emitter installed to `~/.claude/telemetry-emit.sh`
+- Two signal types: a deterministic daily `heartbeat` (fired from `skill-updater.sh`, works even without `gh` CLI) and rich `session_start`/`session_end` events self-reported by ThemeMate mid-session
+- Posts JSON to a Google Sheets Apps Script endpoint; never blocks, never retries, never errors loudly
+- No customer PII in any event -- closed enums only for role/mode/platform/outcome/failure category
+- Opt out by deleting `~/.claude/telemetry-emit.sh`
+
+**`install.sh`**
+- Installs `telemetry-emit.sh` alongside the skill updater
+
+**`skill-updater.sh`**
+- Emits the `heartbeat` event once per calendar day, gated by its own lockfile so it still fires on machines with no `gh` CLI (e.g. merchants)
+
 ---
 
 ## ThemeMate
 
+### [2.1.0] 2026-07-02 — Usage telemetry instrumentation
+
+Current version. Archive will be created at `versions/SKILL-2.1.0.md` when the next version ships.
+
+**Section 14 -- TELEMETRY (new)**
+- `session_start` fired after MODE classification; `session_end` fired at DIAGNOSTIC_SUMMARY, PR_FLOW (after `gh pr create`), or HANDOFF package delivery
+- Closed enums for role/mode/platform/outcome/failure_category/escalated_to -- `failure_category` maps 1:1 to Section 8's eight COMMON FAILURE PATTERNS
+- A `session_start` with no matching `session_end` is read downstream as an abandoned session -- ThemeMate never self-reports abandonment
+- See `telemetry-emit.sh` in Infrastructure above for the transport
+
 ### [2.0.0] 2026-07-01 — Multi-platform, API catalogue, role system overhaul
 
-Current version. Archive will be created at `versions/SKILL-2.0.0.md` when the next version ships.
+Superseded by 2.1.0. Archived at `versions/SKILL-2.0.0.md`.
 
 **Multi-platform scope**
 - BigCommerce promoted from KNOWLEDGE-only to full THEME_EDIT: uses JS API + HANDOFF with Script Manager paste instructions
