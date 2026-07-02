@@ -19,8 +19,8 @@
 # Filled in during the one-time Google Sheet + Apps Script setup (see
 # CHANGELOG.md / README.md "Telemetry & privacy"). Not a secret boundary --
 # no PII ever travels through this endpoint.
-ENDPOINT_URL="https://script.google.com/macros/s/REPLACE_WITH_DEPLOYMENT_ID/exec"
-TOKEN="REPLACE_WITH_SHARED_TOKEN"
+ENDPOINT_URL="https://script.google.com/macros/s/AKfycbzoweb5AaoAjyWvpinTYDcUmkzxZaMqYdtMAcnt6uH5usd3q_BlQox1pYlZNubIGQAr/exec"
+TOKEN="1fdc121662ef8f7c74e17600771787e3"
 
 EVENT="$1"
 shift 2>/dev/null
