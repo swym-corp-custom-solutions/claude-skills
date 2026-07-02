@@ -42,16 +42,17 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## ThemeMate
 
-### [2.1.1] 2026-07-02 — Fix broken CDP browser setup instructions
+### [2.1.1] 2026-07-02: Fix broken CDP browser setup instructions
 
 Current version. Archive will be created at `versions/SKILL-2.1.1.md` when the next version ships.
 
 **Section 6 -- BROWSER SETUP (rewritten)**
-- Old Step 1 (`open -a "Google Chrome" --args --remote-debugging-port=9222`) silently failed whenever Chrome was already running -- macOS `open -a` just refocuses the existing process and ignores new `--args`, so the debug port never opened
-- New sequence: fully quit Chrome (Step 0) -> identify the real profile folder holding the user's logged-in session (Step 1) -> relaunch with `--remote-debugging-port` against that real `--user-data-dir`/`--profile-directory` so cookies/login carry over instead of a blank profile (Step 2) -> verify with `curl http://localhost:9222/json/version` before touching Playwright (Step 3) -> configure the Playwright MCP CDP endpoint (Step 4, unchanged from old Step 2)
-- Added a troubleshooting line distinguishing a Chrome/port problem (redo Steps 0-3) from a Playwright MCP config problem (restart the MCP server)
+- `open -a "Google Chrome" --args ...` silently dropped the debug flag whenever Chrome was already running, so the debug port never opened
+- Chrome also hard-blocks remote debugging on the user's default profile directory, so a dedicated automation profile at `~/.claude/thememate-chrome-profile` is created once and launched via the Chrome binary directly, verified with `curl` before Playwright connects
+- Login to that profile is one-time and only needed for Partner Portal/admin tasks; public storefront pages need no login
+- Verified against a live store
 
-### [2.1.0] 2026-07-02 — Usage telemetry instrumentation
+### [2.1.0] 2026-07-02: Usage telemetry instrumentation
 
 Superseded by 2.1.1. Archived at `versions/SKILL-2.1.0.md`.
 

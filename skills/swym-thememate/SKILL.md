@@ -1135,53 +1135,51 @@ Package delivery is a session-ending point -- emit the `session_end` **TELEMETRY
 
 ## 6. BROWSER SETUP
 
-By default, Playwright opens a new private window -- no Partner Portal session, no store password bypass. To use the existing authenticated Chrome window instead:
+By default, Playwright opens a new private window -- no Partner Portal session, no store password bypass. Use a dedicated automation profile instead of the user's daily-driver Chrome.
 
-**Step 0 -- Fully quit Chrome first.**
-`open -a "Google Chrome" --args ...` silently fails to apply new flags whenever Chrome is already running -- macOS `open -a` just refocuses the existing process and ignores the new `--args`, so the debug port never actually opens. Quit Chrome completely before relaunching it with debugging on:
+**Never point `--remote-debugging-port` at the user's default Chrome profile directory** (`Default` or any `Profile N` under `~/Library/Application Support/Google/Chrome`), including a copy of it. Chrome hard-blocks remote debugging on the default data directory. Use the dedicated profile below instead -- Chrome allows multiple concurrent instances on different `--user-data-dir`s.
+
+**Step 1 -- Create the dedicated profile directory (one-time, idempotent).**
 ```bash
-pkill -9 -f "Google Chrome"
-sleep 2
-ps aux | grep -i "Google Chrome" | grep -v grep   # must return nothing
+mkdir -p ~/.claude/thememate-chrome-profile
 ```
 
-**Step 1 -- Identify the real profile folder.**
-Chrome profiles are folders (`Default`, `Profile 1`, ...) on disk, not the display names shown in the Chrome UI. Find which folder holds the user's logged-in session (e.g. Shopify Partner Portal) so the debug relaunch reuses it instead of starting a blank throwaway profile:
+**Step 2 -- Launch Chrome against it, if not already running.**
+Launch the binary directly -- never `open -a`, which drops `--args` if Chrome is already running.
 ```bash
-cd ~/Library/Application\ Support/Google/Chrome
-for d in Default Profile*; do
-  if [ -f "$d/Preferences" ]; then
-    name=$(python3 -c "import json; print(json.load(open('$d/Preferences'))['profile']['name'])" 2>/dev/null)
-    echo "$d -> $name"
-  fi
-done
+pgrep -f "remote-debugging-port=9222" > /dev/null || \
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --remote-debugging-port=9222 \
+  --user-data-dir="$HOME/.claude/thememate-chrome-profile" \
+  > /tmp/thememate-chrome-debug.log 2>&1 &
+disown
+sleep 3
 ```
-
-**Step 2 -- Relaunch with debugging on, using the real user-data-dir + that profile:**
-```bash
-open -a "Google Chrome" --args --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/Library/Application Support/Google/Chrome" \
-  --profile-directory="Profile 1"
-```
-Replace `"Profile 1"` with the folder identified in Step 1 -- this preserves cookies and the existing login instead of a blank profile. **Don't** run a second, regular Chrome window against the same `--user-data-dir` while the debug instance is up; Chrome treats that as a profile-in-use conflict.
 
 **Step 3 -- Verify before touching Playwright:**
 ```bash
-curl -s http://localhost:9222/json/version
+curl -s http://127.0.0.1:9222/json/version
 ```
-Must return JSON containing `"Browser": "Chrome/..."`. Do not proceed to any Playwright tool calls until this succeeds. A profile picker on first launch of this combination is expected -- dismiss it and continue.
+Must return JSON containing `"Browser": "Chrome/..."`. If it fails, check `/tmp/thememate-chrome-debug.log`, then redo Step 2.
 
 **Step 4 -- Add CDP endpoint to Playwright MCP config (one-time).**
 In `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude Desktop), find the Playwright MCP server entry and add to its `args`:
 ```json
-"--cdp-endpoint", "http://localhost:9222"
+"--cdp-endpoint", "http://127.0.0.1:9222"
 ```
 
-Once set up: Playwright connects to the existing Chrome window. Partner Portal sessions, dev theme previews, and Shopify admin are all reachable.
+**Step 5 -- Log in once, only if the task needs it.**
+The profile starts blank -- fine for public storefront pages (BRAND_DISCOVER, VISUAL_EXTRACT). For Partner Portal, Shopify admin, or a password-protected storefront, log in manually once in the dedicated Chrome window; the session persists for future sessions.
 
 **IPv4/IPv6 note:** Chrome defaults to IPv4 (`127.0.0.1:9222`). Playwright may try IPv6 (`::1:9222`). If connection fails, use `--cdp-endpoint http://127.0.0.1:9222` explicitly.
 
-**Troubleshooting:** if Step 3's `curl` fails, the problem is Chrome/the port -- redo Steps 0-3, don't touch the Playwright config. If `curl` succeeds but Playwright still can't connect, the MCP server likely needs a restart to pick up the Step 4 config change.
+**Troubleshooting:** `curl` failing means a Chrome/port problem -- check the log, redo Step 2. `curl` succeeding but Playwright still failing means the MCP server needs a restart to pick up Step 4. "Target page, context or browser has been closed" after a Chrome restart -- retry the call once.
+
+**Cleanup (only if explicitly asked to stop automation):**
+```bash
+pkill -f "remote-debugging-port=9222"
+```
+Only stops the automation instance; the user's regular Chrome is untouched.
 
 **If not set up:** BRAND_DISCOVER detects this at the CDP pre-step and offers Path Y (partial, file-only analysis).
 
