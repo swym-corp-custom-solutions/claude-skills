@@ -1145,14 +1145,14 @@ mkdir -p ~/.claude/thememate-chrome-profile
 ```
 
 **Step 2 -- Launch Chrome against it, if not already running.**
-Launch the binary directly -- never `open -a`, which drops `--args` if Chrome is already running.
+Launch the binary directly -- never `open -a`, which drops `--args` if Chrome is already running. Match on both the port flag and the dedicated profile dir so an unrelated process using port 9222 isn't mistaken for this instance.
 ```bash
-pgrep -f "remote-debugging-port=9222" > /dev/null || \
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$HOME/.claude/thememate-chrome-profile" \
-  > /tmp/thememate-chrome-debug.log 2>&1 &
-disown
+if ! pgrep -f "remote-debugging-port=9222.*thememate-chrome-profile" > /dev/null; then
+  nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    --remote-debugging-port=9222 \
+    --user-data-dir="$HOME/.claude/thememate-chrome-profile" \
+    > /tmp/thememate-chrome-debug.log 2>&1 &
+fi
 sleep 3
 ```
 
@@ -1177,9 +1177,9 @@ The profile starts blank -- fine for public storefront pages (BRAND_DISCOVER, VI
 
 **Cleanup (only if explicitly asked to stop automation):**
 ```bash
-pkill -f "remote-debugging-port=9222"
+pkill -f "remote-debugging-port=9222.*thememate-chrome-profile"
 ```
-Only stops the automation instance; the user's regular Chrome is untouched.
+Matches the dedicated profile dir too, so it only stops the automation instance -- the user's regular Chrome (or any other process on port 9222) is untouched.
 
 **If not set up:** BRAND_DISCOVER detects this at the CDP pre-step and offers Path Y (partial, file-only analysis).
 

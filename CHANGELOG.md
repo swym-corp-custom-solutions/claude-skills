@@ -50,6 +50,7 @@ Current version. Archive will be created at `versions/SKILL-2.1.1.md` when the n
 - `open -a "Google Chrome" --args ...` silently dropped the debug flag whenever Chrome was already running, so the debug port never opened
 - Chrome also hard-blocks remote debugging on the user's default profile directory, so a dedicated automation profile at `~/.claude/thememate-chrome-profile` is created once and launched via the Chrome binary directly, verified with `curl` before Playwright connects
 - Login to that profile is one-time and only needed for Partner Portal/admin tasks; public storefront pages need no login
+- Launch/cleanup commands match on the dedicated profile dir (not just the port flag) so an unrelated process on port 9222 is never mistaken for the automation instance
 - Verified against a live store
 
 ### [2.1.0] 2026-07-02: Usage telemetry instrumentation
