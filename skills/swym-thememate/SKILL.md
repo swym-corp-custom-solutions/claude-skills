@@ -1140,12 +1140,14 @@ By default, Playwright opens a new private window -- no Partner Portal session, 
 **Never point `--remote-debugging-port` at the user's default Chrome profile directory** (`Default` or any `Profile N` under `~/Library/Application Support/Google/Chrome`), including a copy of it. Chrome hard-blocks remote debugging on the default data directory. Use the dedicated profile below instead -- Chrome allows multiple concurrent instances on different `--user-data-dir`s.
 
 **Step 1 -- Create the dedicated profile directory (one-time, idempotent).**
+`mkdir -p` only creates it if missing -- a no-op on every later run:
 ```bash
 mkdir -p ~/.claude/thememate-chrome-profile
 ```
+If the directory is empty (no profiles yet), Chrome bootstraps a `Default` profile on its own the first time it launches against it -- no separate profile-creation step needed.
 
-**Step 2 -- Launch Chrome against it, if not already running.**
-Launch the binary directly -- never `open -a`, which drops `--args` if Chrome is already running. Match on both the port flag and the dedicated profile dir so an unrelated process using port 9222 isn't mistaken for this instance.
+**Step 2 -- Launch Chrome, if not already running.**
+Launch the binary directly -- never `open -a`, which drops `--args` if Chrome is already running. Match on both the port flag and the dedicated profile dir so an unrelated process using port 9222 isn't mistaken for this instance. Launch plain, with no `--profile-directory` pin -- Chrome resolves the right profile on its own (see Step 3), and pinning to `Default` does not reliably suppress the multi-profile picker once 2+ profiles exist:
 ```bash
 if ! pgrep -f "remote-debugging-port=9222.*thememate-chrome-profile" > /dev/null; then
   nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
@@ -1156,24 +1158,75 @@ fi
 sleep 3
 ```
 
-**Step 3 -- Verify before touching Playwright:**
+**Step 3 -- Check whether Chrome landed on a normal page or stopped at the profile picker.**
+With 0 or 1 profile in the automation directory, Chrome always opens straight into a normal tab -- no picker is possible. With 2+ profiles, Chrome shows a `chrome://profile-picker/` picker on cold launch **unless** "Show on startup" was already unchecked in a prior session, in which case it skips the picker and opens directly into the last-used profile. Don't infer this from `Local State` -- verified empirically, no boolean pref there reflects it. Check what Chrome actually did instead:
+```bash
+curl -s http://127.0.0.1:9222/json/list > /tmp/thememate-chrome-targets.json
+PICKER_WS=$(python3 -c "
+import json
+for t in json.load(open('/tmp/thememate-chrome-targets.json')):
+    if t.get('url') == 'chrome://profile-picker/':
+        print(t.get('webSocketDebuggerUrl', ''))
+        break
+")
+```
+- **`$PICKER_WS` empty** -- Chrome is already on a real page. Continue straight to Step 4.
+- **`$PICKER_WS` set** -- the picker is showing. Uncheck "Show on startup" for the user as a best-effort default (so future launches skip this screen) by driving the picker page directly over its own CDP WebSocket, then hand off profile selection -- only the user knows which profile has the real session data:
+```bash
+if [ -n "$PICKER_WS" ] && command -v node > /dev/null; then
+cat > /tmp/thememate-uncheck-picker.mjs << 'EOF'
+const ws = new WebSocket(process.argv[2]);
+ws.onopen = () => ws.send(JSON.stringify({
+  id: 1,
+  method: 'Runtime.evaluate',
+  params: {
+    expression: `(function(){
+      function find(root) {
+        let found = null;
+        for (const el of root.querySelectorAll('*')) {
+          if (el.shadowRoot) { const r = find(el.shadowRoot); if (r) found = r; }
+          if (el.id === 'askOnStartup') found = el;
+        }
+        return found;
+      }
+      const el = find(document);
+      if (!el) return 'not-found';
+      if (el.checked) { el.click(); return 'unchecked'; }
+      return 'already-unchecked';
+    })()`,
+    returnByValue: true,
+  },
+}));
+ws.onmessage = (e) => {
+  console.log(JSON.parse(e.data).result?.result?.value ?? 'no-response');
+  ws.close();
+  process.exit(0);
+};
+setTimeout(() => process.exit(1), 5000);
+EOF
+node /tmp/thememate-uncheck-picker.mjs "$PICKER_WS"
+fi
+```
+This targets `id="askOnStartup"` inside the picker's internal shadow DOM -- an undocumented implementation detail of Chrome's WebUI, verified against a live install but not a stable public API, so it can silently stop matching on a future Chrome version. If it prints `unchecked` or `already-unchecked`, tell the user only: "Multiple Chrome profiles exist in the automation profile. Please select the one to use in the window that opened." If it prints `not-found`, `no-response`, or `node` isn't available, fall back to also asking the user to manually uncheck "Show on startup" at the bottom of the window. Either way, wait for their profile-selection confirmation before continuing to Step 4.
+
+**Step 4 -- Verify before touching Playwright:**
 ```bash
 curl -s http://127.0.0.1:9222/json/version
 ```
-Must return JSON containing `"Browser": "Chrome/..."`. If it fails, check `/tmp/thememate-chrome-debug.log`, then redo Step 2.
+Must return JSON containing `"Browser": "Chrome/..."`. If it fails, check `/tmp/thememate-chrome-debug.log`, then redo Step 3.
 
-**Step 4 -- Add CDP endpoint to Playwright MCP config (one-time).**
+**Step 5 -- Add CDP endpoint to Playwright MCP config (one-time).**
 In `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude Desktop), find the Playwright MCP server entry and add to its `args`:
 ```json
 "--cdp-endpoint", "http://127.0.0.1:9222"
 ```
 
-**Step 5 -- Log in once, only if the task needs it.**
-The profile starts blank -- fine for public storefront pages (BRAND_DISCOVER, VISUAL_EXTRACT). For Partner Portal, Shopify admin, or a password-protected storefront, log in manually once in the dedicated Chrome window; the session persists for future sessions.
+**Step 6 -- Log in once, only if the task needs it.**
+The profile starts blank -- fine for public storefront pages (BRAND_DISCOVER, VISUAL_EXTRACT). For Partner Portal, Shopify admin, or a password-protected storefront, log in manually once in the dedicated Chrome window; the session persists for future sessions. Logging in here is what creates a second profile in some Chrome versions -- sign into the existing open profile rather than clicking "Add" to avoid tripping the 2+ profile picker path in Step 3.
 
 **IPv4/IPv6 note:** Chrome defaults to IPv4 (`127.0.0.1:9222`). Playwright may try IPv6 (`::1:9222`). If connection fails, use `--cdp-endpoint http://127.0.0.1:9222` explicitly.
 
-**Troubleshooting:** `curl` failing means a Chrome/port problem -- check the log, redo Step 2. `curl` succeeding but Playwright still failing means the MCP server needs a restart to pick up Step 4. "Target page, context or browser has been closed" after a Chrome restart -- retry the call once.
+**Troubleshooting:** `curl` failing means a Chrome/port problem -- check the log, redo Step 2. `curl` succeeding but Playwright still failing means the MCP server needs a restart to pick up Step 5. "Target page, context or browser has been closed" after a Chrome restart -- retry the call once. A Playwright error like `Browser.setDownloadBehavior: Browser context management is not supported`, or a "Who's using Chrome?"/"Welcome to Chrome profiles" window instead of a normal browser window, means the picker appeared mid-session without the Step 3 check catching it -- rerun the Step 3 `PICKER_WS` check and follow the hand-off if it comes back non-empty.
 
 **Cleanup (only if explicitly asked to stop automation):**
 ```bash
