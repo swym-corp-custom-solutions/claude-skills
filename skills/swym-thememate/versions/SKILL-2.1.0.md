@@ -7,7 +7,7 @@ description: >
   or BigCommerce storefront, or build headless integrations via the Swym REST
   API. Uses Shopify CLI for Shopify storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.1.1
+  version: 2.1.0
   last_updated: 2026-07-02
 ---
 
@@ -1135,51 +1135,23 @@ Package delivery is a session-ending point -- emit the `session_end` **TELEMETRY
 
 ## 6. BROWSER SETUP
 
-By default, Playwright opens a new private window -- no Partner Portal session, no store password bypass. Use a dedicated automation profile instead of the user's daily-driver Chrome.
+By default, Playwright opens a new private window -- no Partner Portal session, no store password bypass. To use the existing authenticated Chrome window instead:
 
-**Never point `--remote-debugging-port` at the user's default Chrome profile directory** (`Default` or any `Profile N` under `~/Library/Application Support/Google/Chrome`), including a copy of it. Chrome hard-blocks remote debugging on the default data directory. Use the dedicated profile below instead -- Chrome allows multiple concurrent instances on different `--user-data-dir`s.
-
-**Step 1 -- Create the dedicated profile directory (one-time, idempotent).**
+**Step 1 -- Launch Chrome with remote debugging:**
 ```bash
-mkdir -p ~/.claude/thememate-chrome-profile
+open -a "Google Chrome" --args --remote-debugging-port=9222
 ```
+If Chrome is already open without this flag, quit and relaunch with it.
 
-**Step 2 -- Launch Chrome against it, if not already running.**
-Launch the binary directly -- never `open -a`, which drops `--args` if Chrome is already running. Match on both the port flag and the dedicated profile dir so an unrelated process using port 9222 isn't mistaken for this instance.
-```bash
-if ! pgrep -f "remote-debugging-port=9222.*thememate-chrome-profile" > /dev/null; then
-  nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-    --remote-debugging-port=9222 \
-    --user-data-dir="$HOME/.claude/thememate-chrome-profile" \
-    > /tmp/thememate-chrome-debug.log 2>&1 &
-fi
-sleep 3
-```
-
-**Step 3 -- Verify before touching Playwright:**
-```bash
-curl -s http://127.0.0.1:9222/json/version
-```
-Must return JSON containing `"Browser": "Chrome/..."`. If it fails, check `/tmp/thememate-chrome-debug.log`, then redo Step 2.
-
-**Step 4 -- Add CDP endpoint to Playwright MCP config (one-time).**
+**Step 2 -- Add CDP endpoint to Playwright MCP config (one-time).**
 In `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude Desktop), find the Playwright MCP server entry and add to its `args`:
 ```json
-"--cdp-endpoint", "http://127.0.0.1:9222"
+"--cdp-endpoint", "http://localhost:9222"
 ```
 
-**Step 5 -- Log in once, only if the task needs it.**
-The profile starts blank -- fine for public storefront pages (BRAND_DISCOVER, VISUAL_EXTRACT). For Partner Portal, Shopify admin, or a password-protected storefront, log in manually once in the dedicated Chrome window; the session persists for future sessions.
+Once set up: Playwright connects to the existing Chrome window. Partner Portal sessions, dev theme previews, and Shopify admin are all reachable.
 
 **IPv4/IPv6 note:** Chrome defaults to IPv4 (`127.0.0.1:9222`). Playwright may try IPv6 (`::1:9222`). If connection fails, use `--cdp-endpoint http://127.0.0.1:9222` explicitly.
-
-**Troubleshooting:** `curl` failing means a Chrome/port problem -- check the log, redo Step 2. `curl` succeeding but Playwright still failing means the MCP server needs a restart to pick up Step 4. "Target page, context or browser has been closed" after a Chrome restart -- retry the call once.
-
-**Cleanup (only if explicitly asked to stop automation):**
-```bash
-pkill -f "remote-debugging-port=9222.*thememate-chrome-profile"
-```
-Matches the dedicated profile dir too, so it only stops the automation instance -- the user's regular Chrome (or any other process on port 9222) is untouched.
 
 **If not set up:** BRAND_DISCOVER detects this at the CDP pre-step and offers Path Y (partial, file-only analysis).
 

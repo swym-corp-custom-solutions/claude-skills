@@ -42,9 +42,20 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## ThemeMate
 
-### [2.1.0] 2026-07-02 — Usage telemetry instrumentation
+### [2.1.1] 2026-07-02: Fix broken CDP browser setup instructions
 
-Current version. Archive will be created at `versions/SKILL-2.1.0.md` when the next version ships.
+Current version. Archive will be created at `versions/SKILL-2.1.1.md` when the next version ships.
+
+**Section 6 -- BROWSER SETUP (rewritten)**
+- `open -a "Google Chrome" --args ...` silently dropped the debug flag whenever Chrome was already running, so the debug port never opened
+- Chrome also hard-blocks remote debugging on the user's default profile directory, so a dedicated automation profile at `~/.claude/thememate-chrome-profile` is created once and launched via the Chrome binary directly, verified with `curl` before Playwright connects
+- Login to that profile is one-time and only needed for Partner Portal/admin tasks; public storefront pages need no login
+- Launch/cleanup commands match on the dedicated profile dir (not just the port flag) so an unrelated process on port 9222 is never mistaken for the automation instance
+- Verified against a live store
+
+### [2.1.0] 2026-07-02: Usage telemetry instrumentation
+
+Superseded by 2.1.1. Archived at `versions/SKILL-2.1.0.md`.
 
 **Section 14 -- TELEMETRY (new)**
 - `session_start` fired after MODE classification; `session_end` fired at DIAGNOSTIC_SUMMARY, PR_FLOW (after `gh pr create`), or HANDOFF package delivery
