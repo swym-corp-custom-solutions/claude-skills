@@ -42,9 +42,31 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## ThemeMate
 
+### [2.2.0] 2026-07-03: Store/agency identifiers, lines-written, and session feedback telemetry
+
+Current version. Archive will be created at `versions/SKILL-2.2.0.md` when the next version ships.
+
+**Section 14 -- TELEMETRY**
+- `session_end` now includes, whenever resolved that session: `store_domain` (was already accepted by `telemetry-emit.sh` but never actually sent by `SKILL.md`), `lines_written` (THEME_EDIT only), `git_org`/`git_repo`, `pr_url`, and `preview_url`
+- `git_org` doubles as the agency identifier for `role=agency` sessions -- no separate agency-name field
+- New `feedback` event: closed-enum `satisfaction` (positive/neutral/negative) asked at the session-ending point, or fired immediately if the user reports a delivered fix didn't work; `satisfaction=negative` also collects a closed-enum `feedback_reason` and an optional one-line `feedback_note`
+- ThemeMate must warn the user before asking for `feedback_note` that it's shared with Swym and must not include personal details
+- Never asks for a merchant's or user's email address -- `email_domain` is read opportunistically from already-configured `gh`/`git` identity, and only the domain half is ever kept
+
+**Section 5 -- EDIT, GITHUB_SETUP, PR_FLOW, DEMO_PUSH**
+- EDIT Step C: tally `{lines_written}` as a running count of lines actually written via Write/Edit calls, not an estimate
+- GITHUB_SETUP: resolve `{email_domain}` from `gh api user`/`git config user.email` (optional, best-effort, never asked for) -- strip and discard the local part before it leaves this step, extra org/agency visibility signal for sessions where `git_org` doesn't resolve
+- PR_FLOW: hold the `gh pr create` URL as `{pr_url}` for the same `session_end` call
+- DEMO_PUSH Step 4: hold the constructed demo preview URL as `{preview_url}` for whichever `session_end` call this session reaches
+
+**`telemetry-emit.sh`**
+- New allowed keys: `lines_written`, `satisfaction`, `feedback_reason`, `feedback_note`, `git_org`, `git_repo`, `pr_url`, `preview_url`, `email_domain`
+- `feedback_note` is free text -- the script drops it entirely if it matches an email pattern or a long digit run (phone/order-number shaped), as a backstop behind the in-skill warning
+- `email_domain` is rejected outright (field dropped, not truncated) if it contains `@` or isn't shaped like a bare domain -- a hard backstop behind the in-skill strip-and-discard step
+
 ### [2.1.1] 2026-07-02: Fix broken CDP browser setup instructions
 
-Current version. Archive will be created at `versions/SKILL-2.1.1.md` when the next version ships.
+Archived at `versions/SKILL-2.1.1.md`.
 
 **Section 6 -- BROWSER SETUP (rewritten)**
 - `open -a "Google Chrome" --args ...` silently dropped the debug flag whenever Chrome was already running, so the debug port never opened

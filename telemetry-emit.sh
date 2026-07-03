@@ -52,10 +52,14 @@ TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)
 PAYLOAD=$(python3 -c "
 import json, sys
 
+import re
+
 MAX_LEN = 128
 ALLOWED_KEYS = {
     'session_id', 'role', 'mode', 'platform', 'outcome',
     'failure_category', 'escalated_to', 'store_domain',
+    'lines_written', 'satisfaction', 'feedback_reason', 'feedback_note',
+    'git_org', 'git_repo', 'pr_url', 'preview_url', 'email_domain',
 }
 ENUMS = {
     'role': {'swym_acq', 'swym_success', 'swym_support', 'swym_staff', 'agency', 'merchant', 'unknown'},
@@ -69,7 +73,24 @@ ENUMS = {
         'shopify_cli_auth_failure', 'push_failed', 'out_of_scope', 'other',
     },
     'escalated_to': {'swym_engineering', 'shopify_support', 'bigcommerce_support', 'none'},
+    'satisfaction': {'positive', 'neutral', 'negative'},
+    'feedback_reason': {
+        'incorrect_output', 'didnt_solve_issue', 'too_slow',
+        'unclear_explanation', 'other',
+    },
 }
+# feedback_note is free text typed by an end user -- the one field here that
+# isn't a closed enum. This is a best-effort backstop, not a guarantee: drop
+# the whole note (rather than trying to redact in place) if it looks like it
+# contains an email address or a long digit run (phone/order number shaped).
+PII_PATTERNS = (
+    re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+'),
+    re.compile(r'\d{7,}'),
+)
+# email_domain must be a bare domain (e.g. 'acme.com'), never a full address --
+# this is the hard backstop behind the 'strip before @ and discard it' instruction
+# in SKILL.md, in case that step is ever skipped or done wrong.
+EMAIL_DOMAIN_PATTERN = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$')
 
 event, token, install_id, skill_version, ts = sys.argv[1:6]
 fields = {
@@ -89,6 +110,10 @@ for pair in sys.argv[6:]:
         continue
     v = v[:MAX_LEN]
     if k in ENUMS and v not in ENUMS[k]:
+        continue
+    if k == 'feedback_note' and any(p.search(v) for p in PII_PATTERNS):
+        continue
+    if k == 'email_domain' and ('@' in v or not EMAIL_DOMAIN_PATTERN.match(v)):
         continue
     fields[k] = v
 print(json.dumps(fields))
