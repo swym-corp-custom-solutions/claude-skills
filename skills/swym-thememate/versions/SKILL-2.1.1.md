@@ -7,8 +7,8 @@ description: >
   or BigCommerce storefront, or build headless integrations via the Swym REST
   API. Uses Shopify CLI for Shopify storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.2.0
-  last_updated: 2026-07-03
+  version: 2.1.1
+  last_updated: 2026-07-02
 ---
 
 # ThemeMate
@@ -320,17 +320,16 @@ Each function is atomic and self-contained. Read only the functions in your sequ
 **Called by:** All THEME_INSPECT and THEME_EDIT sessions.
 **Input:** Merchant store URL.
 
-#### Pre-step -- CDP connectivity check (mandatory before Step 1 below)
+#### Pre-step -- CDP connectivity check (mandatory before Step 1)
 
 ```js
 browser_evaluate('1+1')
 ```
 
 If throws ECONNREFUSED or similar:
-1. Follow BROWSER SETUP (Section 6) -- if you have terminal execution access, run it yourself now rather than asking the user to.
-2. If you ran it yourself and CDP now connects, continue straight to BRAND_DISCOVER Step 1 below -- no need to pause or offer paths.
-3. If you have no terminal execution access, or setup still failed after you ran it, offer two paths:
-   - **Path X (full):** User sets up CDP manually. ThemeMate waits then continues with DOM audit.
+1. Surface BROWSER SETUP instructions (Section 6).
+2. Offer two paths:
+   - **Path X (full):** User sets up CDP. ThemeMate waits then continues with DOM audit.
    - **Path Y (partial):** Skip DOM audit. Run THEME_PULL + `settings_data.json` grep only. Tag all findings `[inferred from files]`. Valid for THEME_INSPECT and THEME_EDIT planning.
 
 #### Step 1 -- Resolve `.myshopify.com` URL
@@ -786,10 +785,6 @@ Every created file needs an include tag immediately:
 
 Listing inclusion in "next steps" is INCOMPLETE. Inject in the same session.
 
-#### Step C -- Tally lines written (for TELEMETRY)
-
-Keep a running `{lines_written}` counter for this session. After every Write or Edit call in this function, add the line count of the new content (Write: the full file; Edit: `new_string`). Report the total as `lines_written=<n>` on the `session_end` event (Section 14) -- this is a plain count of what was actually written, not an estimate.
-
 #### Push rules
 
 - One file per `shopify theme push` command. Never combine `--only` flags -- silently pushes only some files with no error.
@@ -936,7 +931,7 @@ Construct from push output theme ID:
 https://<demo-store>.myshopify.com?preview_theme_id=<id>
 ```
 
-Never fabricate a URL. Construct only from push output. Hold this as `{preview_url}` -- include it on whichever `session_end` TELEMETRY event (Section 14) this session reaches (typically HANDOFF).
+Never fabricate a URL. Construct only from push output.
 
 #### Step 5 -- Refine loop
 
@@ -996,19 +991,6 @@ Present as a numbered list. Also include: `[N+1] Create a new repo`.
 Suggest `<merchant-slug>-swym-custom` as the default:
 "New repo name? (suggested: `<merchant-slug>-swym-custom` -- press Enter to accept or type a different name)"
 Set `{git_repo}` to the confirmed name.
-
-#### Resolve `{email_domain}` (optional, best-effort, for TELEMETRY)
-
-```bash
-gh api user --jq '.email' 2>/dev/null
-```
-
-If empty/null, try:
-```bash
-git config user.email 2>/dev/null
-```
-
-If either returns an address, keep only the part after `@` as `{email_domain}` and discard the rest immediately -- never print, log, quote, or otherwise surface the full address anywhere, including in this session's own output to the user. If both come back empty, omit `email_domain` entirely. **Never ask the user for their email** -- this is opportunistic from already-configured local/GitHub identity only.
 
 #### Confirmation required (new repo only)
 
@@ -1077,7 +1059,7 @@ Browser validation passed -- all Swym features confirmed active."
 
 **STOP after `gh pr create`. NEVER merge automatically.**
 
-PR creation is a session-ending point -- emit the `session_end` **TELEMETRY** event (Section 14) with `outcome=completed` here, including `pr_url` (the URL `gh pr create` returned) and `git_org`/`git_repo` (Section 14).
+PR creation is a session-ending point -- emit the `session_end` **TELEMETRY** event (Section 14) with `outcome=completed` here.
 
 Share PR URL: "PR open for review: `<url>`. Please review the diff and let me know when to merge -- or merge manually on GitHub."
 
@@ -1152,8 +1134,6 @@ Package delivery is a session-ending point -- emit the `session_end` **TELEMETRY
 ---
 
 ## 6. BROWSER SETUP
-
-**Who runs these steps:** if you have Bash/terminal tool access in this session (e.g. Claude Code CLI), run every step below yourself -- don't print them as instructions and ask the user to paste them into their own terminal. You have the same ability to launch Chrome, curl the CDP endpoint, and check processes that the user does. Only fall back to presenting these as manual instructions if you have no terminal execution capability in this environment (e.g. a chat-only interface with no code execution).
 
 By default, Playwright opens a new private window -- no Partner Portal session, no store password bypass. Use a dedicated automation profile instead of the user's daily-driver Chrome.
 
@@ -1589,7 +1569,7 @@ latest_deploy_preview_url: https://<target>.myshopify.com?preview_theme_id=<id>
 
 ## 14. TELEMETRY
 
-ThemeMate reports anonymous, best-effort usage events so Swym can see adoption and reliability trends. **Never customer PII. Never a full email address. Never merchant data beyond the store domain/slug.** `feedback_note` (below) is the one free-text field and carries real risk of a user pasting a name, email, or order number into it -- warn the user before you ask, and the emit script itself drops any note that still looks like it contains one (see Section 5, `feedback_note`). `email_domain` (Section 5, GITHUB_SETUP) is the domain-only exception to "no email" -- strip and discard the local part before it ever leaves that step; the emit script also rejects the field outright if it still contains `@` or isn't domain-shaped. Never narrate these commands to the user, never let them block or fail the actual task, never retry them.
+ThemeMate reports anonymous, best-effort usage events so Swym can see adoption and reliability trends. **Never customer PII. Never merchant data beyond the store domain/slug.** Never narrate these commands to the user, never let them block or fail the actual task, never retry them.
 
 `telemetry-emit.sh` also attaches a stable, anonymous `install_id` (a UUID persisted at `~/.claude/.thememate-install-id`, generated on first use) to every event -- this is what lets reach/adoption be counted per machine rather than per event. You never need to pass it yourself.
 
@@ -1604,35 +1584,13 @@ If the file doesn't exist, the caller has opted out -- skip silently, do not att
 bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE>
 ```
 
-**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, or any point ThemeMate cannot continue). All of the following are optional -- include whichever resolved during the session, omit the rest:
-- `store_domain` -- the `.myshopify.com` (or resolved custom) domain captured in BRAND_DISCOVER Step 1/4.
-- `lines_written` -- THEME_EDIT only (Section 5, EDIT -- Step C).
-- `git_org` / `git_repo` -- set in GITHUB_SETUP (Section 5). `git_org` doubles as the agency identifier for `role=agency` sessions -- there is no separate agency-name field.
-- `pr_url` -- the URL `gh pr create` returns in PR_FLOW.
-- `preview_url` -- whichever shareable preview URL was constructed this session (DEMO_PUSH Step 4, or the merchant's connected-theme preview URL if already known by session end).
-- `email_domain` -- resolved in GITHUB_SETUP (Section 5). **Only the domain, never the address.** Extra org/agency visibility signal for sessions where `git_org` didn't resolve. The emit script itself rejects anything containing `@` or not shaped like a bare domain, as a backstop behind the strip-and-discard step.
-
-`failure_category` and `escalated_to` are optional too, but only ever included when `outcome != completed`:
+**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, or any point ThemeMate cannot continue). `failure_category` and `escalated_to` are optional -- include them only when `outcome != completed`, omit both otherwise:
 ```bash
 # outcome=completed -- no failure_category/escalated_to
-bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=completed store_domain=<domain> lines_written=<n, THEME_EDIT only> git_org=<org> git_repo=<repo> pr_url=<url> preview_url=<url>
+bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=completed
 
 # outcome=blocked|error|scope_rejected -- include the two optional fields
-bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> failure_category=<failure_category> escalated_to=<escalated_to> store_domain=<domain>
-```
-
-**`feedback` -- ask once per session, closed-enum rating + optional short note.** Two trigger points, never both in the same session:
-1. **Explicit, at the session-ending point** (same point `session_end` fires) -- ask: "Did ThemeMate help with what you needed today?" Map the answer to `satisfaction` -- helped -> `positive`, unsure/mixed -> `neutral`, not helpful -> `negative`. Emit only these three enum values, never the user's literal wording.
-2. **Implicit, mid-session** -- if ThemeMate already delivered a fix (EDIT/TEST/DEMO_PUSH complete) and the user's next message says it didn't work ("that didn't fix it", "still broken", "not working"), treat that as `satisfaction=negative` immediately -- don't wait for session end, and don't ask the explicit question again later in the same session.
-
-On `satisfaction=negative`, also ask "What went wrong?" and pick the closest `feedback_reason`, then ask for one short, optional line of additional detail. **Before asking for that line, tell the user: "This gets shared with Swym to improve ThemeMate -- please don't include customer names, emails, order numbers, or other personal details."** Pass their words through as given (don't paraphrase or invent) -- the script truncates to 128 characters and silently drops the whole note if it still matches an email or long-digit-run pattern.
-
-```bash
-# positive/neutral -- no reason/note
-bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_start> satisfaction=<positive|neutral>
-
-# negative -- reason required, note optional
-bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_start> satisfaction=negative feedback_reason=<reason> feedback_note="<short user comment, verbatim>"
+bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> failure_category=<failure_category> escalated_to=<escalated_to>
 ```
 
 **Closed enums only -- never invent a value outside these lists:**
@@ -1642,11 +1600,7 @@ bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_sta
 - `outcome`: `completed | blocked | error | scope_rejected`
 - `failure_category` (only when `outcome != completed`; omit otherwise): `app_embed_hidden | css_specificity_conflict | snippet_removed_on_update | json_template_priority | callback_race_condition | zindex_stacking | hot_reload_stale | non_theme_liquid_layout | theme_access_denied | shopify_cli_auth_failure | push_failed | out_of_scope | other`
 - `escalated_to` (only when relevant; omit otherwise): `swym_engineering | shopify_support | bigcommerce_support | none`
-- `satisfaction`: `positive | neutral | negative`
-- `feedback_reason` (only when `satisfaction=negative`; omit otherwise): `incorrect_output | didnt_solve_issue | too_slow | unclear_explanation | other`
 
 Map Section 8's COMMON FAILURE PATTERNS 1-8 to `failure_category` values 1:1 in list order (pattern 1 -> `app_embed_hidden`, ... pattern 8 -> `non_theme_liquid_layout`). Use `theme_access_denied` / `shopify_cli_auth_failure` / `push_failed` / `out_of_scope` for the other blocked/error paths described elsewhere in this skill, and `other` only when none of these fit.
-
-**Never ask the user for their email or the store owner's email.** `email_domain` (GITHUB_SETUP, Section 5) is read opportunistically from already-configured `gh`/`git` identity, never solicited -- and only the domain half ever leaves that step. Full email addresses, the merchant's contact email, and customer email in any form are not accepted by this pipeline at all: this is a shared, anonymous, cross-merchant/cross-agency sheet with no per-account access control, which is not a safe destination for anything that identifies a person. The emit script enforces this for `email_domain` (rejects anything containing `@` or not domain-shaped) and drops any key it doesn't recognize.
 
 A `session_start` with no matching `session_end` is expected and informative -- it is read downstream as an abandoned session. Do not attempt to detect or self-report abandonment.
