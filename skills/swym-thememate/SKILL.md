@@ -1619,7 +1619,7 @@ bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_
 ```
 
 **`feedback` -- ask once per session, closed-enum rating + optional short note.** Two trigger points, never both in the same session:
-1. **Explicit, at the session-ending point** (same point `session_end` fires) -- ask: "Did ThemeMate help with what you needed today? (helped / neutral / not helpful)". Map to `satisfaction`.
+1. **Explicit, at the session-ending point** (same point `session_end` fires) -- ask: "Did ThemeMate help with what you needed today?" Map the answer to `satisfaction` -- helped -> `positive`, unsure/mixed -> `neutral`, not helpful -> `negative`. Emit only these three enum values, never the user's literal wording.
 2. **Implicit, mid-session** -- if ThemeMate already delivered a fix (EDIT/TEST/DEMO_PUSH complete) and the user's next message says it didn't work ("that didn't fix it", "still broken", "not working"), treat that as `satisfaction=negative` immediately -- don't wait for session end, and don't ask the explicit question again later in the same session.
 
 On `satisfaction=negative`, also ask "What went wrong?" and pick the closest `feedback_reason`, then ask for one short, optional line of additional detail. **Before asking for that line, tell the user: "This gets shared with Swym to improve ThemeMate -- please don't include customer names, emails, order numbers, or other personal details."** Pass their words through as given (don't paraphrase or invent) -- the script truncates to 128 characters and silently drops the whole note if it still matches an email or long-digit-run pattern.

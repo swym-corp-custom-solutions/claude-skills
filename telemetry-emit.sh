@@ -82,9 +82,10 @@ ENUMS = {
 # feedback_note is free text typed by an end user -- the one field here that
 # isn't a closed enum. This is a best-effort backstop, not a guarantee: drop
 # the whole note (rather than trying to redact in place) if it looks like it
-# contains an email address or a long digit run (phone/order number shaped).
+# contains an email address (any '@' at all, including a partial local-part
+# with no domain yet typed) or a long digit run (phone/order number shaped).
 PII_PATTERNS = (
-    re.compile(r'[\w.+-]+@[\w-]+\.[\w.-]+'),
+    re.compile(r'@'),
     re.compile(r'\d{7,}'),
 )
 # email_domain must be a bare domain (e.g. 'acme.com'), never a full address --
