@@ -1173,7 +1173,7 @@ for t in targets:
         break
 ")
 ```
-- **`$PICKER_WS` empty** -- Chrome is already on a real page. Continue straight to Step 4.
+- **`$PICKER_WS` empty** -- either Chrome already landed on a real page, or `/json/list` itself couldn't be reached (the snippet swallows JSON/connection errors into an empty result either way). Don't treat this as confirmation Chrome is ready -- continue to Step 4, which is the authoritative readiness check; if that fails, redo Step 2, not Step 3.
 - **`$PICKER_WS` set** -- the picker is showing. Tell the user: "Multiple Chrome profiles exist in the automation profile. Please select the one to use in the window that opened, and uncheck 'Show on startup' at the bottom so future sessions skip this screen." Wait for their confirmation before continuing to Step 4.
 
 **Step 4 -- Verify before touching Playwright:**
