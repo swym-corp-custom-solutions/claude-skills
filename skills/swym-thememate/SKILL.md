@@ -1161,19 +1161,22 @@ sleep 3
 **Step 3 -- Check whether Chrome landed on a normal page or stopped at the profile picker.**
 With 0 or 1 profile in the automation directory, Chrome always opens straight into a normal tab -- no picker is possible. With 2+ profiles, Chrome shows a `chrome://profile-picker/` picker on cold launch **unless** "Show on startup" was already unchecked in a prior session, in which case it skips the picker and opens directly into the last-used profile. Don't infer this from `Local State` -- verified empirically, no boolean pref there reflects it. Check what Chrome actually did instead:
 ```bash
-curl -s http://127.0.0.1:9222/json/list > /tmp/thememate-chrome-targets.json
-PICKER_WS=$(python3 -c "
-import json
-for t in json.load(open('/tmp/thememate-chrome-targets.json')):
+PICKER_WS=$(curl -s http://127.0.0.1:9222/json/list | python3 -c "
+import json, sys
+try:
+    targets = json.load(sys.stdin)
+except Exception:
+    targets = []
+for t in targets:
     if t.get('url') == 'chrome://profile-picker/':
         print(t.get('webSocketDebuggerUrl', ''))
         break
 ")
 ```
 - **`$PICKER_WS` empty** -- Chrome is already on a real page. Continue straight to Step 4.
-- **`$PICKER_WS` set** -- the picker is showing. Uncheck "Show on startup" for the user as a best-effort default (so future launches skip this screen) by driving the picker page directly over its own CDP WebSocket, then hand off profile selection -- only the user knows which profile has the real session data:
+- **`$PICKER_WS` set** -- the picker is showing. Uncheck "Show on startup" for the user as a best-effort default (so future launches skip this screen) by driving the picker page directly over its own CDP WebSocket, then hand off profile selection -- only the user knows which profile has the real session data. Gate on Node actually having a global `WebSocket` (unflagged only since Node 22 -- older LTS Node has `node` on PATH but no `WebSocket`, which would otherwise throw instead of falling back):
 ```bash
-if [ -n "$PICKER_WS" ] && command -v node > /dev/null; then
+if [ -n "$PICKER_WS" ] && command -v node > /dev/null && node -e "process.exit(typeof WebSocket === 'undefined' ? 1 : 0)" 2>/dev/null; then
 cat > /tmp/thememate-uncheck-picker.mjs << 'EOF'
 const ws = new WebSocket(process.argv[2]);
 ws.onopen = () => ws.send(JSON.stringify({
@@ -1198,7 +1201,9 @@ ws.onopen = () => ws.send(JSON.stringify({
   },
 }));
 ws.onmessage = (e) => {
-  console.log(JSON.parse(e.data).result?.result?.value ?? 'no-response');
+  const msg = JSON.parse(e.data);
+  if (msg.id !== 1) return;
+  console.log(msg.result?.result?.value ?? 'no-response');
   ws.close();
   process.exit(0);
 };
@@ -1207,13 +1212,13 @@ EOF
 node /tmp/thememate-uncheck-picker.mjs "$PICKER_WS"
 fi
 ```
-This targets `id="askOnStartup"` inside the picker's internal shadow DOM -- an undocumented implementation detail of Chrome's WebUI, verified against a live install but not a stable public API, so it can silently stop matching on a future Chrome version. If it prints `unchecked` or `already-unchecked`, tell the user only: "Multiple Chrome profiles exist in the automation profile. Please select the one to use in the window that opened." If it prints `not-found`, `no-response`, or `node` isn't available, fall back to also asking the user to manually uncheck "Show on startup" at the bottom of the window. Either way, wait for their profile-selection confirmation before continuing to Step 4.
+The `msg.id !== 1` filter matters -- CDP can deliver unrelated event messages over the same WebSocket before the `Runtime.evaluate` response arrives, and those don't carry an `id`, so a handler that reacts to the first message received can print `no-response` and exit even though the real response was still on its way. This targets `id="askOnStartup"` inside the picker's internal shadow DOM -- an undocumented implementation detail of Chrome's WebUI, verified against a live install but not a stable public API, so it can silently stop matching on a future Chrome version. If it prints `unchecked` or `already-unchecked`, tell the user only: "Multiple Chrome profiles exist in the automation profile. Please select the one to use in the window that opened." If it prints `not-found`, `no-response`, or the `node`/`WebSocket` guard didn't pass, fall back to also asking the user to manually uncheck "Show on startup" at the bottom of the window. Either way, wait for their profile-selection confirmation before continuing to Step 4.
 
 **Step 4 -- Verify before touching Playwright:**
 ```bash
 curl -s http://127.0.0.1:9222/json/version
 ```
-Must return JSON containing `"Browser": "Chrome/..."`. If it fails, check `/tmp/thememate-chrome-debug.log`, then redo Step 3.
+Must return JSON containing `"Browser": "Chrome/..."`. If it fails, the CDP HTTP server itself isn't up -- check `/tmp/thememate-chrome-debug.log`, then redo Step 2 (relaunch Chrome), not Step 3 (which assumes this endpoint already answers).
 
 **Step 5 -- Add CDP endpoint to Playwright MCP config (one-time).**
 In `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude Desktop), find the Playwright MCP server entry and add to its `args`:
