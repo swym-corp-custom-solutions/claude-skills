@@ -320,7 +320,7 @@ Each function is atomic and self-contained. Read only the functions in your sequ
 **Called by:** All THEME_INSPECT and THEME_EDIT sessions.
 **Input:** Merchant store URL.
 
-#### Pre-step -- CDP connectivity check (mandatory before Step 1)
+#### Pre-step -- CDP connectivity check (mandatory before Step 1 below)
 
 ```js
 browser_evaluate('1+1')
@@ -328,7 +328,7 @@ browser_evaluate('1+1')
 
 If throws ECONNREFUSED or similar:
 1. Follow BROWSER SETUP (Section 6) -- if you have terminal execution access, run it yourself now rather than asking the user to.
-2. If you ran it yourself and CDP now connects, continue straight to Step 1 -- no need to pause or offer paths.
+2. If you ran it yourself and CDP now connects, continue straight to BRAND_DISCOVER Step 1 below -- no need to pause or offer paths.
 3. If you have no terminal execution access, or setup still failed after you ran it, offer two paths:
    - **Path X (full):** User sets up CDP manually. ThemeMate waits then continues with DOM audit.
    - **Path Y (partial):** Skip DOM audit. Run THEME_PULL + `settings_data.json` grep only. Tag all findings `[inferred from files]`. Valid for THEME_INSPECT and THEME_EDIT planning.
