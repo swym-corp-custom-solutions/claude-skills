@@ -327,9 +327,10 @@ browser_evaluate('1+1')
 ```
 
 If throws ECONNREFUSED or similar:
-1. Surface BROWSER SETUP instructions (Section 6).
-2. Offer two paths:
-   - **Path X (full):** User sets up CDP. ThemeMate waits then continues with DOM audit.
+1. Follow BROWSER SETUP (Section 6) -- if you have terminal execution access, run it yourself now rather than asking the user to.
+2. If you ran it yourself and CDP now connects, continue straight to Step 1 -- no need to pause or offer paths.
+3. If you have no terminal execution access, or setup still failed after you ran it, offer two paths:
+   - **Path X (full):** User sets up CDP manually. ThemeMate waits then continues with DOM audit.
    - **Path Y (partial):** Skip DOM audit. Run THEME_PULL + `settings_data.json` grep only. Tag all findings `[inferred from files]`. Valid for THEME_INSPECT and THEME_EDIT planning.
 
 #### Step 1 -- Resolve `.myshopify.com` URL
@@ -1134,6 +1135,8 @@ Package delivery is a session-ending point -- emit the `session_end` **TELEMETRY
 ---
 
 ## 6. BROWSER SETUP
+
+**Who runs these steps:** if you have Bash/terminal tool access in this session (e.g. Claude Code CLI), run every step below yourself -- don't print them as instructions and ask the user to paste them into their own terminal. You have the same ability to launch Chrome, curl the CDP endpoint, and check processes that the user does. Only fall back to presenting these as manual instructions if you have no terminal execution capability in this environment (e.g. a chat-only interface with no code execution).
 
 By default, Playwright opens a new private window -- no Partner Portal session, no store password bypass. Use a dedicated automation profile instead of the user's daily-driver Chrome.
 
