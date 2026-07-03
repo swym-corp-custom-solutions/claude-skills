@@ -1174,45 +1174,7 @@ for t in targets:
 ")
 ```
 - **`$PICKER_WS` empty** -- Chrome is already on a real page. Continue straight to Step 4.
-- **`$PICKER_WS` set** -- the picker is showing. Uncheck "Show on startup" for the user as a best-effort default (so future launches skip this screen) by driving the picker page directly over its own CDP WebSocket, then hand off profile selection -- only the user knows which profile has the real session data. Gate on Node actually having a global `WebSocket` (unflagged only since Node 22 -- older LTS Node has `node` on PATH but no `WebSocket`, which would otherwise throw instead of falling back):
-```bash
-if [ -n "$PICKER_WS" ] && command -v node > /dev/null && node -e "process.exit(typeof WebSocket === 'undefined' ? 1 : 0)" 2>/dev/null; then
-cat > /tmp/thememate-uncheck-picker.mjs << 'EOF'
-const ws = new WebSocket(process.argv[2]);
-ws.onopen = () => ws.send(JSON.stringify({
-  id: 1,
-  method: 'Runtime.evaluate',
-  params: {
-    expression: `(function(){
-      function find(root) {
-        let found = null;
-        for (const el of root.querySelectorAll('*')) {
-          if (el.shadowRoot) { const r = find(el.shadowRoot); if (r) found = r; }
-          if (el.id === 'askOnStartup') found = el;
-        }
-        return found;
-      }
-      const el = find(document);
-      if (!el) return 'not-found';
-      if (el.checked) { el.click(); return 'unchecked'; }
-      return 'already-unchecked';
-    })()`,
-    returnByValue: true,
-  },
-}));
-ws.onmessage = (e) => {
-  const msg = JSON.parse(e.data);
-  if (msg.id !== 1) return;
-  console.log(msg.result?.result?.value ?? 'no-response');
-  ws.close();
-  process.exit(0);
-};
-setTimeout(() => process.exit(1), 5000);
-EOF
-node /tmp/thememate-uncheck-picker.mjs "$PICKER_WS"
-fi
-```
-The `msg.id !== 1` filter matters -- CDP can deliver unrelated event messages over the same WebSocket before the `Runtime.evaluate` response arrives, and those don't carry an `id`, so a handler that reacts to the first message received can print `no-response` and exit even though the real response was still on its way. This targets `id="askOnStartup"` inside the picker's internal shadow DOM -- an undocumented implementation detail of Chrome's WebUI, verified against a live install but not a stable public API, so it can silently stop matching on a future Chrome version. If it prints `unchecked` or `already-unchecked`, tell the user only: "Multiple Chrome profiles exist in the automation profile. Please select the one to use in the window that opened." If it prints `not-found`, `no-response`, or the `node`/`WebSocket` guard didn't pass, fall back to also asking the user to manually uncheck "Show on startup" at the bottom of the window. Either way, wait for their profile-selection confirmation before continuing to Step 4.
+- **`$PICKER_WS` set** -- the picker is showing. Tell the user: "Multiple Chrome profiles exist in the automation profile. Please select the one to use in the window that opened, and uncheck 'Show on startup' at the bottom so future sessions skip this screen." Wait for their confirmation before continuing to Step 4.
 
 **Step 4 -- Verify before touching Playwright:**
 ```bash
