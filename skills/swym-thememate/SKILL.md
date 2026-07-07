@@ -251,24 +251,18 @@ Implementation mode. All functions available.
 **The THEME_PULL fork determines the path:**
 
 ```
-THEME_PULL attempted
-       |
-  success                   fail (no access)
-  |                         |
-Pull merchant             VISUAL_EXTRACT
-theme files               (browser-only brand extraction)
-  |                         |
-PREREQUISITES             PLAN
-AUDIT                     EDIT (on demo store base theme)
-PLAN                      TEST
-LOCAL_GIT_INIT            DEMO_PUSH
-EDIT                      [HANDOFF on confirm]
-TEST
-PUBLISH_CHOICE
-  |         |
-GITHUB_SETUP  HANDOFF
-PR_FLOW
+THEME_PULL attempted -> success or fail (no access)
 ```
+
+**Success (has theme file access):**
+Pull merchant theme files -> PREREQUISITES -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST
+-> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF]
+
+**Fail (no access):**
+VISUAL_EXTRACT (browser-only brand extraction) -> PLAN -> EDIT (on demo store base theme) -> TEST
+-> DEMO_PUSH -> [HANDOFF on confirm]
+
+The fail path never reaches PUBLISH_CHOICE, GITHUB_SETUP, or PR_FLOW -- it only ever pushes to the Swym-owned demo store (DEMO_PUSH) and optionally ends in HANDOFF.
 
 Both paths end with: **preview URL shared + code snippets if needed.**
 
@@ -294,7 +288,7 @@ Use this table to find the function call order for your session. Then read only 
 |---|---|
 | swym_acq | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
 | swym_success | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
-| swym_support | BRAND_DISCOVER -> THEME_PULL -> AUDIT -> PLAN -> EDIT -> TEST -> PUBLISH_CHOICE -> [PR_FLOW | HANDOFF] |
+| swym_support | BRAND_DISCOVER -> THEME_PULL -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
 | agency | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
 | merchant | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> EDIT -> TEST -> HANDOFF |
 
@@ -750,9 +744,25 @@ Path B scope by element:
 ### LOCAL_GIT_INIT
 
 **Purpose:** Set up local version control so EDIT has something to commit into and TEST has history to roll back to. Purely local -- no GitHub interaction, nothing pushed anywhere, no confirmation needed.
-**Called by:** THEME_EDIT first sessions for `swym_acq`, `swym_success`, `agency` (roles that would later reach GITHUB_SETUP). Skip for `merchant` (no git at all) and `swym_support` return sessions (repo already exists locally via `git pull` in THEME_PULL).
+**Called by:** THEME_EDIT first sessions for `swym_acq`, `swym_success`, `swym_support`, `agency` (all roles that reach PUBLISH_CHOICE). Skip for `merchant` (no git at all).
 
-#### Baseline must be clean -- no feature files
+#### Return session check
+
+```bash
+test -d ./<slug>/.git && echo "existing repo"
+```
+
+If `./<slug>/.git` already exists (return session -- THEME_PULL already ran `git pull origin main`), skip straight to the feature branch step below. Do not re-init or re-commit a baseline -- one already exists.
+
+#### First session -- init, then check baseline is clean
+
+`git init` must run before any other `git -C ./<slug>` command, or they fail with "not a git repository":
+
+```bash
+git init ./<slug>
+```
+
+Now check for feature files that shouldn't land in the baseline commit:
 
 ```bash
 git -C ./<slug> diff --name-only
@@ -762,12 +772,15 @@ git -C ./<slug> ls-files --others --exclude-standard
 Exclude any files created or modified this session. Commit only the original pulled theme.
 
 ```bash
-git init ./<slug>
 git -C ./<slug> checkout -b main
 git -C ./<slug> add .
 git -C ./<slug> commit -m "chore: baseline pull from <merchant> live theme <YYYY-MM-DD>"
+```
 
-git -C ./<slug> checkout -b feature/<slug>
+#### Feature branch (first and return sessions)
+
+```bash
+git -C ./<slug> checkout -b feature/<slug> 2>/dev/null || git -C ./<slug> checkout feature/<slug>
 ```
 
 All EDIT work happens on this feature branch. No remote is configured here -- that only happens in GITHUB_SETUP, and only if the user opts into GitHub via PUBLISH_CHOICE.
@@ -986,11 +999,11 @@ If yes: call HANDOFF.
 
 Ask: "Your changes are validated locally. Would you like me to (1) push this to a GitHub repo and open a PR for review, or (2) give you a handoff package to apply these changes yourself?"
 
-- **User picks (1):** run GITHUB_SETUP. If a repo was already resolved earlier this session (return session, `swym_support` fix session) GITHUB_SETUP skips straight to pushing the feature branch. Then run PR_FLOW.
+- **User picks (1):** run GITHUB_SETUP. If a repo was already resolved earlier this session (return session, `swym_support` fix session) GITHUB_SETUP skips `gh repo create` and goes straight to the remote/push step. Then run PR_FLOW, which pushes the `feature/<slug>` branch and opens the PR.
 - **User picks (2), or declines GitHub:** go straight to HANDOFF. Skip GITHUB_SETUP and PR_FLOW entirely for this session.
 - **User picks (1) but has no repo-create access:** if GITHUB_SETUP's org resolution (Step 1) returns no orgs at all, stop before attempting `gh repo create`: "I don't see any GitHub org you have access to create a repo in. I'll put together a handoff package instead." Fall back to HANDOFF -- do not dead-end the session.
 
-No GitHub command runs, and no repo is created, before this confirmation is reached.
+No repo is created and no PR is opened before this confirmation is reached. (THEME_PULL's return-session lookup may already have run a read-only `gh repo list` earlier in the session -- that doesn't create or push anything.)
 
 ---
 
@@ -1032,7 +1045,7 @@ gh repo list {git_org} --json name,updatedAt --limit 50 \
 
 Present as a numbered list. Also include: `[N+1] Create a new repo`.
 
-- User selects an existing repo -> set `{git_repo}`. Skip `gh repo create`. Go straight to the feature branch step.
+- User selects an existing repo -> set `{git_repo}`. Skip `gh repo create`. Go straight to the push step below.
 - User selects "Create a new repo" -> go to Step 3.
 
 **Step 3 -- Name the new repo (only when creating):**
@@ -1066,13 +1079,17 @@ If the user selected an existing repo: skip this confirmation and skip `gh repo 
 
 LOCAL_GIT_INIT already ran `git init`, made the baseline commit on `main`, and created `feature/<slug>` before EDIT started -- this step only connects that local history to GitHub.
 
+New repo only (skip entirely if the user selected an existing repo in Step 2):
 ```bash
 gh repo create {git_org}/{git_repo} --private
-git -C ./<slug> remote add origin https://github.com/{git_org}/{git_repo}.git
-git -C ./<slug> push -u origin main
 ```
 
-Skip `gh repo create` when the user selected an existing repo in Step 2 -- just add the remote (if not already configured) and push.
+Both cases -- add-or-update the remote (a return session may already have `origin` configured) and push:
+```bash
+git -C ./<slug> remote add origin https://github.com/{git_org}/{git_repo}.git 2>/dev/null \
+  || git -C ./<slug> remote set-url origin https://github.com/{git_org}/{git_repo}.git
+git -C ./<slug> push -u origin main
+```
 
 The `feature/<slug>` branch itself is pushed in PR_FLOW, not here.
 
