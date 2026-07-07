@@ -7,8 +7,8 @@ description: >
   or BigCommerce storefront, or build headless integrations via the Swym REST
   API. Uses Shopify CLI for Shopify storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.3.0
-  last_updated: 2026-07-07
+  version: 2.2.0
+  last_updated: 2026-07-03
 ---
 
 # ThemeMate
@@ -108,7 +108,7 @@ Replace `swym_staff` with the resolved role (`swym_acq`, `swym_success`, `swym_s
 - Default to **Path B** (custom implementation replacing Swym default UI) -- ACQ requests typically involve API-driven behavior, custom event hooks via SwymCallbacks, or custom API calls that the default App Embed does not support.
 - Run IMPLEMENTATION_TYPE before PLAN on every custom implementation session. API choice is locked for the full session -- never mix JS API and REST API in one implementation.
 - For storefront (Shopify or BigCommerce): use JS API (`swat.*`) exclusively. For headless: use REST API exclusively.
-- PR_FLOW is the expected outcome of PUBLISH_CHOICE for all work -- every ACQ implementation is production code intended for `{git_org}/{git_repo}`. Still confirm via PUBLISH_CHOICE after TEST; only fall back to HANDOFF if the user declines GitHub or has no repo access.
+- PR_FLOW for all work -- every ACQ implementation is production code committed to `{git_org}/{git_repo}`.
 - DEMO_PUSH only when showing a built implementation to a merchant for approval before final PR (not for prospect pitches -- that is `swym_success`).
 - When THEME_PULL fails (no access) -> VISUAL_EXTRACT path -> build on demo store -> DEMO_PUSH -> HANDOFF.
 - Ask about HANDOFF at end of any DEMO_PUSH session.
@@ -131,7 +131,7 @@ Replace `swym_staff` with the resolved role (`swym_acq`, `swym_success`, `swym_s
 **Behaviors:**
 - First-time merchant: run PREREQUISITES check. If any fail, run FIRST_TIME_SETUP.
 - Pitch scenario (no-access): VISUAL_EXTRACT -> DEMO_PUSH -> refine loop -> HANDOFF.
-- Production onboarding (has access): THEME_PULL -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF].
+- Production onboarding (has access): THEME_PULL -> AUDIT -> PLAN -> GITHUB_SETUP -> EDIT -> TEST -> PR_FLOW.
 - Ask about HANDOFF at end of any DEMO_PUSH session.
 
 ---
@@ -170,7 +170,7 @@ Replace `swym_staff` with the resolved role (`swym_acq`, `swym_success`, `swym_s
 | Session type check | run |
 
 **Behaviors:**
-- Agency BYOR: resolve org and repo via guided selection when PUBLISH_CHOICE routes to GITHUB_SETUP (see GITHUB_SETUP). Store as `{git_org}` and `{git_repo}`. Confirmation required before `gh repo create`.
+- Agency BYOR: resolve org and repo via guided selection at session start (see GITHUB_SETUP). Store as `{git_org}` and `{git_repo}`. Confirmation required before `gh repo create`.
 - Multi-store guardrail: if a second distinct merchant slug appears mid-session, pause: "Switching context from [merchant-A] to [merchant-B]. All subsequent operations will target [merchant-B]. Confirm?"
 - Ask about HANDOFF at end of session.
 
@@ -251,18 +251,22 @@ Implementation mode. All functions available.
 **The THEME_PULL fork determines the path:**
 
 ```
-THEME_PULL attempted -> success or fail (no access)
+THEME_PULL attempted
+       |
+  success                   fail (no access)
+  |                         |
+Pull merchant             VISUAL_EXTRACT
+theme files               (browser-only brand extraction)
+  |                         |
+PREREQUISITES             PLAN
+AUDIT                     EDIT (on demo store base theme)
+PLAN                      TEST
+GITHUB_SETUP              DEMO_PUSH
+EDIT                      [HANDOFF on confirm]
+TEST
+PR_FLOW
+[HANDOFF on confirm]
 ```
-
-**Success (has theme file access):**
-Pull merchant theme files -> PREREQUISITES -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST
--> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF]
-
-**Fail (no access):**
-VISUAL_EXTRACT (browser-only brand extraction) -> PLAN -> EDIT (on demo store base theme) -> TEST
--> DEMO_PUSH -> [HANDOFF on confirm]
-
-The fail path never reaches PUBLISH_CHOICE, GITHUB_SETUP, or PR_FLOW -- it only ever pushes to the Swym-owned demo store (DEMO_PUSH) and optionally ends in HANDOFF.
 
 Both paths end with: **preview URL shared + code snippets if needed.**
 
@@ -286,10 +290,10 @@ Use this table to find the function call order for your session. Then read only 
 
 | Role | Function sequence |
 |---|---|
-| swym_acq | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
-| swym_success | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
-| swym_support | BRAND_DISCOVER -> THEME_PULL -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
-| agency | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
+| swym_acq | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> GITHUB_SETUP -> EDIT -> TEST -> PR_FLOW -> [HANDOFF on confirm] |
+| swym_success | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> GITHUB_SETUP -> EDIT -> TEST -> PR_FLOW -> [HANDOFF on confirm] |
+| swym_support | BRAND_DISCOVER -> THEME_PULL -> AUDIT -> PLAN -> EDIT -> TEST -> PR_FLOW |
+| agency | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> GITHUB_SETUP -> EDIT -> TEST -> PR_FLOW -> [HANDOFF on confirm] |
 | merchant | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> EDIT -> TEST -> HANDOFF |
 
 ### THEME_EDIT -- no access (THEME_PULL fails)
@@ -741,52 +745,6 @@ Path B scope by element:
 
 ---
 
-### LOCAL_GIT_INIT
-
-**Purpose:** Set up local version control so EDIT has something to commit into and TEST has history to roll back to. Purely local -- no GitHub interaction, nothing pushed anywhere, no confirmation needed.
-**Called by:** THEME_EDIT first sessions for `swym_acq`, `swym_success`, `swym_support`, `agency` (all roles that reach PUBLISH_CHOICE). Skip for `merchant` (no git at all).
-
-#### Return session check
-
-```bash
-test -d ./<slug>/.git && echo "existing repo"
-```
-
-If `./<slug>/.git` already exists (return session -- THEME_PULL already ran `git pull origin main`), skip straight to the feature branch step below. Do not re-init or re-commit a baseline -- one already exists.
-
-#### First session -- init, then check baseline is clean
-
-`git init` must run before any other `git -C ./<slug>` command, or they fail with "not a git repository":
-
-```bash
-git init ./<slug>
-```
-
-Now check for feature files that shouldn't land in the baseline commit:
-
-```bash
-git -C ./<slug> diff --name-only
-git -C ./<slug> ls-files --others --exclude-standard
-```
-
-Exclude any files created or modified this session. Commit only the original pulled theme.
-
-```bash
-git -C ./<slug> checkout -b main
-git -C ./<slug> add .
-git -C ./<slug> commit -m "chore: baseline pull from <merchant> live theme <YYYY-MM-DD>"
-```
-
-#### Feature branch (first and return sessions)
-
-```bash
-git -C ./<slug> checkout -b feature/<slug> 2>/dev/null || git -C ./<slug> checkout feature/<slug>
-```
-
-All EDIT work happens on this feature branch. No remote is configured here -- that only happens in GITHUB_SETUP, and only if the user opts into GitHub via PUBLISH_CHOICE.
-
----
-
 ### EDIT
 
 **Purpose:** Write and patch theme files. Always on a feature branch. Never on a published / live theme.
@@ -934,7 +892,7 @@ Tier 3 (last resort): `shopify theme pull` from live store, overwriting local ch
 #### User confirmation gate
 
 Ask: "Can you confirm this looks correct before I continue?"
-Do NOT proceed to PUBLISH_CHOICE or DEMO_PUSH without explicit "confirmed" / "approved" / "looks good".
+Do NOT proceed to PR_FLOW or DEMO_PUSH without explicit "confirmed" / "approved" / "looks good".
 
 ---
 
@@ -992,25 +950,10 @@ If yes: call HANDOFF.
 
 ---
 
-### PUBLISH_CHOICE
-
-**Purpose:** After the user has confirmed the local preview looks correct (TEST's confirmation gate), decide whether to publish the work to GitHub (repo + PR) or hand it off for manual application.
-**Called by:** THEME_EDIT has-access path, immediately after TEST, for all roles except `merchant` (which always goes straight to HANDOFF -- see role table, Section 2).
-
-Ask: "Your changes are validated locally. Would you like me to (1) push this to a GitHub repo and open a PR for review, or (2) give you a handoff package to apply these changes yourself?"
-
-- **User picks (1):** run GITHUB_SETUP. If a repo was already resolved earlier this session (return session, `swym_support` fix session) GITHUB_SETUP skips `gh repo create` and goes straight to the remote/push step. Then run PR_FLOW, which pushes the `feature/<slug>` branch and opens the PR.
-- **User picks (2), or declines GitHub:** go straight to HANDOFF. Skip GITHUB_SETUP and PR_FLOW entirely for this session.
-- **User picks (1) but has no repo-create access:** if GITHUB_SETUP's org resolution (Step 1) returns no orgs at all, stop before attempting `gh repo create`: "I don't see any GitHub org you have access to create a repo in. I'll put together a handoff package instead." Fall back to HANDOFF -- do not dead-end the session.
-
-No repo is created and no PR is opened before this confirmation is reached. (THEME_PULL's return-session lookup may already have run a read-only `gh repo list` earlier in the session -- that doesn't create or push anything.)
-
----
-
 ### GITHUB_SETUP
 
-**Purpose:** Resolve or create the GitHub repo, then push the local baseline + feature branch that LOCAL_GIT_INIT already committed. GitHub-facing only -- all local git bookkeeping already happened in LOCAL_GIT_INIT before EDIT.
-**Called by:** PUBLISH_CHOICE, when the user opts into GitHub and either a new repo needs creating or an existing one needs the branch pushed.
+**Purpose:** Create GitHub repo, commit clean baseline (original pulled theme), create feature branch.
+**Called by:** THEME_EDIT first sessions for `swym_acq`, `swym_success`, `agency`, `swym_support` (fix sessions).
 **Never called for:** demo store sessions, `merchant` role.
 
 #### Resolve `{git_org}` and `{git_repo}` -- run this before everything else
@@ -1045,7 +988,7 @@ gh repo list {git_org} --json name,updatedAt --limit 50 \
 
 Present as a numbered list. Also include: `[N+1] Create a new repo`.
 
-- User selects an existing repo -> set `{git_repo}`. Skip `gh repo create`. Go straight to the push step below.
+- User selects an existing repo -> set `{git_repo}`. Skip `gh repo create`. Go straight to the feature branch step.
 - User selects "Create a new repo" -> go to Step 3.
 
 **Step 3 -- Name the new repo (only when creating):**
@@ -1075,30 +1018,35 @@ Wait for explicit yes before running `gh repo create`.
 
 If the user selected an existing repo: skip this confirmation and skip `gh repo create` entirely.
 
-#### Create repo (new repo only) and push the local baseline
+#### Baseline must be clean -- no feature files
 
-LOCAL_GIT_INIT already ran `git init`, made the baseline commit on `main`, and created `feature/<slug>` before EDIT started -- this step only connects that local history to GitHub.
+```bash
+git -C ./<slug> diff --name-only
+git -C ./<slug> ls-files --others --exclude-standard
+```
 
-New repo only (skip entirely if the user selected an existing repo in Step 2):
+Exclude any files created or modified this session. Commit only the original pulled theme.
+
 ```bash
 gh repo create {git_org}/{git_repo} --private
-```
-
-Both cases -- add-or-update the remote (a return session may already have `origin` configured) and push:
-```bash
-git -C ./<slug> remote add origin https://github.com/{git_org}/{git_repo}.git 2>/dev/null \
-  || git -C ./<slug> remote set-url origin https://github.com/{git_org}/{git_repo}.git
+git init ./<slug>
+git -C ./<slug> remote add origin https://github.com/{git_org}/{git_repo}.git
+git -C ./<slug> checkout -b main
+git -C ./<slug> add .
+git -C ./<slug> commit -m "chore: baseline pull from <merchant> live theme <YYYY-MM-DD>"
 git -C ./<slug> push -u origin main
+
+git -C ./<slug> checkout -b feature/<slug>
 ```
 
-The `feature/<slug>` branch itself is pushed in PR_FLOW, not here.
+All EDIT work happens on this feature branch.
 
 ---
 
 ### PR_FLOW
 
 **Purpose:** Push feature branch, open PR, stop. Wait for human to merge.
-**Called by:** PUBLISH_CHOICE, after GITHUB_SETUP, when the user opted into GitHub.
+**Called by:** THEME_EDIT has-access path (all roles except `merchant`).
 
 #### Check for open PRs first
 
@@ -1160,11 +1108,11 @@ git add METADATA.md && git commit -m "chore: update session log <YYYY-MM-DD>" &&
 ### HANDOFF
 
 **Purpose:** Generate a package for the merchant's developer to apply changes to the real store.
-**Called by:** End of THEME_EDIT sessions where the merchant / developer needs to apply changes independently -- via PUBLISH_CHOICE (user declined GitHub, or has no repo-create access), via DEMO_PUSH's end-of-session ask, or directly for `merchant` role.
+**Called by:** End of THEME_EDIT sessions where the merchant / developer needs to apply changes independently.
 
 **Confirmation gate (non-merchant roles):**
-If arriving via PUBLISH_CHOICE, the user's choice there already is the confirmation -- generate directly, no second prompt.
-Otherwise (e.g. end of a DEMO_PUSH session): "Would you like a handoff package with steps to apply these changes to the merchant's real store?" Wait for yes before generating.
+"Would you like a handoff package with steps to apply these changes to the merchant's real store?"
+Wait for yes before generating.
 
 `merchant` role: always generate HANDOFF -- no confirmation needed.
 
@@ -1630,7 +1578,7 @@ latest_deploy_preview_url: https://<target>.myshopify.com?preview_theme_id=<id>
 
 **Platform:** Shopify and BigCommerce storefronts for THEME_EDIT. Other platforms are KNOWLEDGE only.
 
-- **BigCommerce storefront:** `{impl_type}` = `storefront`. Use JS API catalogue (Section 9). No Shopify CLI -- deliver code via HANDOFF with BigCommerce paste instructions: Storefront -> Script Manager -> Add Script. GITHUB_SETUP and PR_FLOW are still reachable via PUBLISH_CHOICE for ACQ sessions.
+- **BigCommerce storefront:** `{impl_type}` = `storefront`. Use JS API catalogue (Section 9). No Shopify CLI -- deliver code via HANDOFF with BigCommerce paste instructions: Storefront -> Script Manager -> Add Script. GITHUB_SETUP and PR_FLOW still apply for ACQ sessions.
 - **Headless / custom frontend:** `{impl_type}` = `headless` via IMPLEMENTATION_TYPE. Use REST API catalogue (Section 9). Deliver code in chat. No theme write commands.
 - **WooCommerce:** KNOWLEDGE only. Deliver manual code snippet with paste instructions: Appearance -> Theme File Editor -> `functions.php`.
 - **Wix:** KNOWLEDGE only. Deliver manual code snippet with paste instructions: Settings -> Advanced -> Custom Code (or Velo).

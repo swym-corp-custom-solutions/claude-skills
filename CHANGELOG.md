@@ -42,9 +42,22 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## ThemeMate
 
+### [2.3.0] 2026-07-07: Defer GitHub repo/PR creation until after preview confirmation
+
+Current version. Archive will be created at `versions/SKILL-2.3.0.md` when the next version ships.
+
+**Section 5 -- GITHUB_SETUP split into LOCAL_GIT_INIT + GITHUB_SETUP + new PUBLISH_CHOICE**
+- Previously `GITHUB_SETUP` ran before `EDIT`, creating a real GitHub repo and pushing a baseline commit before the user had seen any change or confirmed they wanted a repo at all
+- New `LOCAL_GIT_INIT` (before `EDIT`): purely local -- `git init`, baseline commit, `feature/<slug>` branch. No `gh` calls, no confirmation needed, nothing leaves the machine. Prerequisite for EDIT's per-change commits and TEST's rollback tiers
+- `GITHUB_SETUP` trimmed to the GitHub-facing half only -- org/repo resolution, confirmation, `gh repo create` (new repo only), remote add, push of the baseline already committed by `LOCAL_GIT_INIT`. No longer runs unconditionally pre-EDIT
+- New `PUBLISH_CHOICE` (after TEST's existing confirmation gate): asks whether to push to GitHub + open a PR, or receive a HANDOFF package instead. Falls back to HANDOFF automatically if the user has no GitHub org/repo-create access, instead of dead-ending
+- `TEST`'s confirmation gate now blocks progression to `PUBLISH_CHOICE` (previously blocked `PR_FLOW` directly)
+- Sequence tables (Section 4) and the THEME_EDIT flow diagram (Section 3) updated to reflect `... -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF]`
+- `merchant` role and the `DEMO_PUSH` (no-access) path are unaffected -- neither ever touched `GITHUB_SETUP`
+
 ### [2.2.0] 2026-07-03: Store/agency identifiers, lines-written, and session feedback telemetry
 
-Current version. Archive will be created at `versions/SKILL-2.2.0.md` when the next version ships.
+Superseded by 2.3.0. Archived at `versions/SKILL-2.2.0.md`.
 
 **Section 14 -- TELEMETRY**
 - `session_end` now includes, whenever resolved that session: `store_domain` (was already accepted by `telemetry-emit.sh` but never actually sent by `SKILL.md`), `lines_written` (THEME_EDIT only), `git_org`/`git_repo`, `pr_url`, and `preview_url`
