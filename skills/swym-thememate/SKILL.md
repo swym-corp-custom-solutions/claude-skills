@@ -7,8 +7,8 @@ description: >
   or BigCommerce storefront, or build headless integrations via the Swym REST
   API. Uses Shopify CLI for Shopify storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.3.0
-  last_updated: 2026-07-07
+  version: 2.4.0
+  last_updated: 2026-07-10
 ---
 
 # ThemeMate
@@ -512,6 +512,12 @@ Matching rules (apply in priority order):
 
 `swym_support` role exception: always run a fresh CLI pull in addition to `git pull`. Compare git repo vs live state; flag any diffs explicitly.
 
+**Also check the store's own theme list for undocumented prior work** -- independent of the GitHub check above, since someone may have built directly in Shopify Admin without ever creating a repo:
+```bash
+shopify theme list --store <merchant>.myshopify.com --json
+```
+Flag any unpublished theme whose name matches `swym|copy|thememate` (case-insensitive) that isn't already accounted for by the GitHub match above. Surface it before starting FIRST SESSION: "Found theme '<name>' that looks like prior Swym work not tracked in GitHub -- want me to inspect it first?" Wait for the user's answer before proceeding.
+
 #### FIRST SESSION -- Method 1 (Shopify CLI, preferred)
 
 Pre-step: resolve `.myshopify.com` URL if not known (eval `window.Shopify?.shop`).
@@ -530,9 +536,16 @@ If two or more themes have identical names: list all with IDs and creation dates
 shopify theme pull --store <merchant>.myshopify.com --theme <live_id> --path ./<slug>
 ```
 
+If `shopify theme list` or `shopify theme pull` returns a "you don't have access to this dev store" error, try a fresh login before falling to Method 2 -- a stale or wrong authenticated CLI identity produces the identical error message to genuine lack of access:
+```bash
+shopify auth logout
+shopify theme list --store <merchant>.myshopify.com
+```
+Only fall through to Method 2 (or Method 3 FAIL) if the retry still errors after the fresh login.
+
 #### FIRST SESSION -- Method 2 (Shopify Partner Portal)
 
-If CLI returns auth error:
+If CLI returns auth error (including after the re-login retry above):
 1. Log in to partners.shopify.com.
 2. Navigate to Stores -> find merchant -> "Log in to store".
 3. Online Store -> Themes -> [live theme] -> Actions -> Download theme file.
@@ -671,6 +684,14 @@ find ./<slug>/sections -name "*swym*" | sort
 Wishlist template naming is not standardized. Common: `page.wishlist.liquid`, `page.swym.liquid`, `page.custom.liquid`.
 
 `.json` template takes priority over `.liquid`. Confirm which is active by checking the DOM for markup specific to `.liquid` (e.g. `#wishlisthtml`, `.grid-uniform`). If absent, `.json` is serving the page.
+
+#### Caution -- orphaned settings
+
+A field's presence (and even a filled-in, brand-matched default value) in `config/settings_schema.json` / `settings_data.json` is not proof the theme uses it. Before treating a setting as active config, grep for its consumption (`settings.<id>`) in the theme's liquid/JS -- if nothing references it, it's dead, not a working customization.
+
+#### Live-probe requirement (prior custom implementations only)
+
+If a prior custom Swym implementation is found (not just default App Embed), functionally probe it before reporting on its status -- click the actual add/remove-to-wishlist controls, and check the Network tab for requests to Swym's API. Do not report status from reading the code alone: code that reads as complete can still be broken in ways only a live interaction reveals (e.g. a selector that matches nothing, or a missing fallback path for a first-time session).
 
 #### Cross-reference
 
@@ -1267,6 +1288,8 @@ The profile starts blank -- fine for public storefront pages (BRAND_DISCOVER, VI
 
 **Troubleshooting:** `curl` failing means a Chrome/port problem -- check the log, redo Step 2. `curl` succeeding but Playwright still failing means the MCP server needs a restart to pick up Step 5. "Target page, context or browser has been closed" after a Chrome restart -- retry the call once. A Playwright error like `Browser.setDownloadBehavior: Browser context management is not supported`, or a "Who's using Chrome?"/"Welcome to Chrome profiles" window instead of a normal browser window, means the picker appeared mid-session without the Step 3 check catching it -- rerun the Step 3 `PICKER_WS` check and follow the hand-off if it comes back non-empty.
 
+**Retry budget:** If a full Chrome restart (Step 2) resolves the issue once but a later navigation in the same session hangs or errors again, restart Chrome at most one more time. If that second restart doesn't fix it (navigation still hangs or errors on a trivial URL like `about:blank`), stop restarting Chrome -- this indicates a Playwright MCP server-level issue, not a Chrome/profile issue, and further restarts won't help. Switch immediately to TEST's Auth Fallback path (share the dev URL, ask the user to confirm directly) instead of continuing to retry.
+
 **Cleanup (only if explicitly asked to stop automation):**
 ```bash
 pkill -f "remote-debugging-port=9222.*thememate-chrome-profile"
@@ -1373,6 +1396,18 @@ Never use inline `<style>` blocks -- Vite-based themes do not render them reliab
 ThemeMate cannot toggle these -- instruct user and wait for confirmation before implementing replacement:
 - **Theme-level:** Shopify Admin -> Online Store -> Themes -> Customize -> App Embeds -> App Control Centre -> "Show Swym UI" (affects only this theme)
 - **Global:** Swym Dashboard -> Settings (affects all themes)
+
+### Enumerating App Embed blocks
+
+Wishlist Plus ships multiple independently-toggled App Embed blocks in the same theme -- list all of them before touching any single one:
+```bash
+grep -o '"shopify://apps/[^"]*"' ./<slug>/config/settings_data.json | sort -u
+```
+At minimum: `wishlist-app-embed` (gates JS SDK load + Control Center theming), `storefront-ui-elements` (variant-selector popup styling), `sbisa-embed-init` (Back In Stock -- a separate feature, out of scope unless explicitly requested). Each has its own `"disabled"` flag. Toggling the wrong one either does nothing (SDK still doesn't load) or silently enables an out-of-scope feature.
+
+### Two separate control planes
+
+App Embed block settings (`config/settings_data.json`, theme-scoped) and Swym Dashboard account-level feature flags (`window.SwymEnabledCommonFeatures`, account-scoped, not editable via theme files) are independent control planes. A UI element like the header/nav icon can be fully wired in the theme and still not render if the Dashboard-level flag for it is off. Check `enabledFeatures` (captured in BRAND_DISCOVER Step 4) before designing CSS/JS around a specific Swym UI element.
 
 ### Wishlist page -- inject in `theme.liquid`, not page template
 
@@ -1692,12 +1727,12 @@ bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_sta
 - `mode`: `KNOWLEDGE | THEME_INSPECT | THEME_EDIT`
 - `platform`: `shopify | bigcommerce | headless | unknown`
 - `outcome`: `completed | blocked | error | scope_rejected`
-- `failure_category` (only when `outcome != completed`; omit otherwise): `app_embed_hidden | css_specificity_conflict | snippet_removed_on_update | json_template_priority | callback_race_condition | zindex_stacking | hot_reload_stale | non_theme_liquid_layout | theme_access_denied | shopify_cli_auth_failure | push_failed | out_of_scope | other`
+- `failure_category` (only when `outcome != completed`; omit otherwise): `app_embed_hidden | css_specificity_conflict | snippet_removed_on_update | json_template_priority | callback_race_condition | zindex_stacking | hot_reload_stale | non_theme_liquid_layout | theme_access_denied | shopify_cli_auth_failure | push_failed | out_of_scope | browser_automation_failure | other`
 - `escalated_to` (only when relevant; omit otherwise): `swym_engineering | shopify_support | bigcommerce_support | none`
 - `satisfaction`: `positive | neutral | negative`
 - `feedback_reason` (only when `satisfaction=negative`; omit otherwise): `incorrect_output | didnt_solve_issue | too_slow | unclear_explanation | other`
 
-Map Section 8's COMMON FAILURE PATTERNS 1-8 to `failure_category` values 1:1 in list order (pattern 1 -> `app_embed_hidden`, ... pattern 8 -> `non_theme_liquid_layout`). Use `theme_access_denied` / `shopify_cli_auth_failure` / `push_failed` / `out_of_scope` for the other blocked/error paths described elsewhere in this skill, and `other` only when none of these fit.
+Map Section 8's COMMON FAILURE PATTERNS 1-8 to `failure_category` values 1:1 in list order (pattern 1 -> `app_embed_hidden`, ... pattern 8 -> `non_theme_liquid_layout`). Use `theme_access_denied` / `shopify_cli_auth_failure` / `push_failed` / `out_of_scope` for the other blocked/error paths described elsewhere in this skill, and `other` only when none of these fit. Use `browser_automation_failure` specifically when browser tooling (CDP/Playwright) that was working degrades or breaks mid-session and blocks the task -- distinct from a CDP setup failure caught at BRAND_DISCOVER's pre-step (Section 5), which has its own Path X/Path Y fallback and doesn't need this category.
 
 **Never ask the user for their email or the store owner's email.** `email_domain` (GITHUB_SETUP, Section 5) is read opportunistically from already-configured `gh`/`git` identity, never solicited -- and only the domain half ever leaves that step. Full email addresses, the merchant's contact email, and customer email in any form are not accepted by this pipeline at all: this is a shared, anonymous, cross-merchant/cross-agency sheet with no per-account access control, which is not a safe destination for anything that identifies a person. The emit script enforces this for `email_domain` (rejects anything containing `@` or not domain-shaped) and drops any key it doesn't recognize.
 

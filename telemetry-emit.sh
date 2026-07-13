@@ -70,7 +70,7 @@ ENUMS = {
         'app_embed_hidden', 'css_specificity_conflict', 'snippet_removed_on_update',
         'json_template_priority', 'callback_race_condition', 'zindex_stacking',
         'hot_reload_stale', 'non_theme_liquid_layout', 'theme_access_denied',
-        'shopify_cli_auth_failure', 'push_failed', 'out_of_scope', 'other',
+        'shopify_cli_auth_failure', 'push_failed', 'out_of_scope', 'browser_automation_failure', 'other',
     },
     'escalated_to': {'swym_engineering', 'shopify_support', 'bigcommerce_support', 'none'},
     'satisfaction': {'positive', 'neutral', 'negative'},
