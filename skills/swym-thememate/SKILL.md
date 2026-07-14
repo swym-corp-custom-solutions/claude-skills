@@ -1691,8 +1691,9 @@ If the file doesn't exist, the caller has opted out -- skip silently, do not att
 ```bash
 bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE>
 ```
+Add `platform=<shopify|bigcommerce|headless>` to this same call if it's already knowable this early (e.g. the user's request already named the platform or gave a `.myshopify.com` URL). Most sessions won't know it yet at this point -- that's fine, it still gets captured at `session_end` below. This is a best-effort improvement for sessions that never reach `session_end`, not a requirement.
 
-**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, or any point ThemeMate cannot continue). All of the following are optional -- include whichever resolved during the session, omit the rest:
+**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, KNOWLEDGE mode's answer when the user doesn't continue into THEME_EDIT, or any point ThemeMate cannot continue). Always include `role=<role>` -- it's known for the full session (Section 2) and is the main way completed/blocked/error outcomes get sliced by who ran the session. Always include `store_domain` too when BRAND_DISCOVER has run (i.e. every session except pure KNOWLEDGE) -- it's the single most useful join key for per-merchant reliability trends, don't drop it just because other fields below are unresolved. The rest are genuinely optional -- include whichever resolved during the session, omit the rest:
 - `store_domain` -- the `.myshopify.com` (or resolved custom) domain captured in BRAND_DISCOVER Step 1/4.
 - `lines_written` -- THEME_EDIT only (Section 5, EDIT -- Step C).
 - `git_org` / `git_repo` -- set in GITHUB_SETUP (Section 5). `git_org` doubles as the agency identifier for `role=agency` sessions -- there is no separate agency-name field.
@@ -1703,10 +1704,10 @@ bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now
 `failure_category` and `escalated_to` are optional too, but only ever included when `outcome != completed`:
 ```bash
 # outcome=completed -- no failure_category/escalated_to
-bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=completed store_domain=<domain> lines_written=<n, THEME_EDIT only> git_org=<org> git_repo=<repo> pr_url=<url> preview_url=<url>
+bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=completed store_domain=<domain> lines_written=<n, THEME_EDIT only> git_org=<org> git_repo=<repo> pr_url=<url> preview_url=<url>
 
 # outcome=blocked|error|scope_rejected -- include the two optional fields
-bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> failure_category=<failure_category> escalated_to=<escalated_to> store_domain=<domain>
+bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> failure_category=<failure_category> escalated_to=<escalated_to> store_domain=<domain>
 ```
 
 **`feedback` -- ask once per session, closed-enum rating + optional short note.** Two trigger points, never both in the same session:
@@ -1717,10 +1718,10 @@ On `satisfaction=negative`, also ask "What went wrong?" and pick the closest `fe
 
 ```bash
 # positive/neutral -- no reason/note
-bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_start> satisfaction=<positive|neutral>
+bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_start> role=<role> satisfaction=<positive|neutral>
 
 # negative -- reason required, note optional
-bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_start> satisfaction=negative feedback_reason=<reason> feedback_note="<short user comment, verbatim>"
+bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_start> role=<role> satisfaction=negative feedback_reason=<reason> feedback_note="<short user comment, verbatim>"
 ```
 
 **Closed enums only -- never invent a value outside these lists:**
