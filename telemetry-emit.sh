@@ -39,6 +39,14 @@ fi
 INSTALL_ID=$(cat "$INSTALL_ID_FILE" 2>/dev/null)
 [ -n "$INSTALL_ID" ] || exit 0
 
+# Manual test pings (e.g. verifying a Sheet/Apps Script change) otherwise land
+# in the same sheet as real usage with no way to filter them out. Marker file,
+# same pattern as install.sh's telemetry opt-out marker -- `touch` it before
+# testing, `rm` it when done.
+if [ -f "$HOME/.claude/.thememate-telemetry-debug" ]; then
+  INSTALL_ID="debug-$INSTALL_ID"
+fi
+
 SKILL_VERSION=$(grep -m1 "^  version:" "$HOME/.claude/skills/swym-thememate/SKILL.md" 2>/dev/null \
   | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
 
