@@ -92,6 +92,13 @@ PII_PATTERNS = (
 # this is the hard backstop behind the 'strip before @ and discard it' instruction
 # in SKILL.md, in case that step is ever skipped or done wrong.
 EMAIL_DOMAIN_PATTERN = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$')
+# session_id must be the UUID SKILL.md's session_start step generates and asks
+# the caller to reuse verbatim on every later event in the same session. A
+# hand-typed/descriptive id (seen in the wild, e.g. 'tm-support-2026-07-03')
+# can't be relied on to be reused consistently and silently breaks the
+# session_start/session_end join downstream -- reject it here rather than
+# shipping a row nothing can ever join to.
+SESSION_ID_PATTERN = re.compile(r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$')
 
 event, token, install_id, skill_version, ts = sys.argv[1:6]
 fields = {
@@ -115,6 +122,8 @@ for pair in sys.argv[6:]:
     if k == 'feedback_note' and any(p.search(v) for p in PII_PATTERNS):
         continue
     if k == 'email_domain' and ('@' in v or not EMAIL_DOMAIN_PATTERN.match(v)):
+        continue
+    if k == 'session_id' and not SESSION_ID_PATTERN.match(v):
         continue
     fields[k] = v
 print(json.dumps(fields))
