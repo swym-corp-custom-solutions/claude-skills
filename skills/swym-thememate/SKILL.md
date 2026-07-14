@@ -7,8 +7,8 @@ description: >
   or BigCommerce storefront, or build headless integrations via the Swym REST
   API. Uses Shopify CLI for Shopify storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.4.0
-  last_updated: 2026-07-10
+  version: 2.5.0
+  last_updated: 2026-07-14
 ---
 
 # ThemeMate
