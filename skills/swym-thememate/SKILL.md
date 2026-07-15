@@ -231,7 +231,7 @@ Combined audit + implement ("check and fix everything"): start THEME_INSPECT, sh
 Answer from Swym docs. No store context required.
 - Consult 1-2 relevant Swym doc references, then answer.
 - After answering: "Want me to apply this on a theme so you can see it live?"
-- If the user does not continue into THEME_EDIT, the answer is this session's completion point -- emit the `session_end` **TELEMETRY** event (Section 14) with `role=<role> mode=KNOWLEDGE outcome=completed` immediately after answering. If the user does continue into THEME_EDIT, skip this -- the THEME_EDIT session's own completion point (PR_FLOW, HANDOFF, etc.) covers it instead.
+- If the user does not continue into THEME_EDIT, the answer is this session's completion point -- emit the `session_end` **TELEMETRY** event (Section 14) with `session_id=<same uuid from session_start> role=<role> mode=KNOWLEDGE outcome=completed` immediately after answering. If the user does continue into THEME_EDIT, skip this -- the THEME_EDIT session's own completion point (PR_FLOW, HANDOFF, etc.) covers it instead.
 
 ---
 
