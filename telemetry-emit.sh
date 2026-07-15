@@ -39,6 +39,14 @@ fi
 INSTALL_ID=$(cat "$INSTALL_ID_FILE" 2>/dev/null)
 [ -n "$INSTALL_ID" ] || exit 0
 
+# Manual test pings (e.g. verifying a Sheet/Apps Script change) otherwise land
+# in the same sheet as real usage with no way to filter them out. Marker file,
+# same pattern as install.sh's telemetry opt-out marker -- `touch` it before
+# testing, `rm` it when done.
+if [ -f "$HOME/.claude/.thememate-telemetry-debug" ]; then
+  INSTALL_ID="debug-$INSTALL_ID"
+fi
+
 SKILL_VERSION=$(grep -m1 "^  version:" "$HOME/.claude/skills/swym-thememate/SKILL.md" 2>/dev/null \
   | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
 
@@ -92,6 +100,15 @@ PII_PATTERNS = (
 # this is the hard backstop behind the 'strip before @ and discard it' instruction
 # in SKILL.md, in case that step is ever skipped or done wrong.
 EMAIL_DOMAIN_PATTERN = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$')
+# session_id must be the UUID SKILL.md's session_start step generates and asks
+# the caller to reuse verbatim on every later event in the same session. A
+# hand-typed/descriptive id (seen in the wild, e.g. 'tm-support-2026-07-03')
+# can't be relied on to be reused consistently and silently breaks the
+# session_start/session_end join downstream. Dropping just this field isn't
+# enough -- every malformed id would then land with the same blank
+# session_id, which is worse than unjoinable: a naive groupby would fold them
+# all together as if they were one session. Drop the whole event instead.
+SESSION_ID_PATTERN = re.compile(r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$')
 
 event, token, install_id, skill_version, ts = sys.argv[1:6]
 fields = {
@@ -116,6 +133,8 @@ for pair in sys.argv[6:]:
         continue
     if k == 'email_domain' and ('@' in v or not EMAIL_DOMAIN_PATTERN.match(v)):
         continue
+    if k == 'session_id' and not SESSION_ID_PATTERN.match(v):
+        sys.exit(0)
     fields[k] = v
 print(json.dumps(fields))
 " "$EVENT" "$TOKEN" "$INSTALL_ID" "$SKILL_VERSION" "$TS" "$@" 2>/dev/null)

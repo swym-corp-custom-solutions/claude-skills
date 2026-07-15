@@ -172,6 +172,8 @@ cp skills/swym-thememate/versions/SKILL-1.0.0.md \
 - One install: `rm ~/.claude/telemetry-emit.sh`. Both call sites treat a missing file as a silent no-op -- nothing else changes. Note this only lasts until the next `install.sh` run, which re-copies the file.
 - Permanently: `touch ~/.claude/.thememate-telemetry-optout`. `install.sh` checks for this marker and skips (re-)installing `telemetry-emit.sh` as long as it exists, so the choice survives future installs and updates.
 
+**Testing the telemetry pipe itself:** `touch ~/.claude/.thememate-telemetry-debug` before firing manual test events (e.g. verifying a Sheet/Apps Script change). `telemetry-emit.sh` prefixes `install_id` with `debug-` while that marker exists, so test rows can be filtered out of real usage reporting with one condition instead of hunting them down by hand. `rm` the marker when done.
+
 ---
 
 ### How to Use
