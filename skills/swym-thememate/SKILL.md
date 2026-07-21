@@ -1,5 +1,5 @@
 ---
-name: thememate
+name: swym-thememate
 description: >
   ThemeMate -- interactive Swym theme assistant for Shopify and BigCommerce.
   Inspect and edit theme files to configure Swym Wishlist Plus features. Use
@@ -7,8 +7,8 @@ description: >
   or BigCommerce storefront, or build headless integrations via the Swym REST
   API. Uses Shopify CLI for Shopify storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.5.0
-  last_updated: 2026-07-14
+  version: 2.6.0
+  last_updated: 2026-07-18
 ---
 
 # ThemeMate
@@ -311,9 +311,22 @@ Each function is atomic and self-contained. Read only the functions in your sequ
 
 ---
 
+### TOKEN_EFFICIENT_VERIFICATION_WORKFLOW (default)
+
+Use this workflow by default for style/config verification tasks to reduce token usage while preserving reliability.
+
+1. Discovery phase (no browser screenshots): extract brand tokens from `config/settings_data.json` and CSS custom properties (`--color-*`, `--font-*`) in `layout/theme.liquid` and primary CSS assets. Use browser accessibility snapshot (text/ARIA tree) for PDP/requirement structure checks.
+2. Build phase: edit Liquid/CSS with exact extracted values. Do not use screenshots.
+3. Verify phase: compare computed style JSON via `evaluate()` between reference and target elements. Prefer text/JSON diffs over visual comparison.
+4. Screenshot fallback only when computed-style diffs cannot answer the question (for example, complex layout spacing). If needed, capture element-cropped screenshots only. Max one before and one after per checkpoint.
+5. Session hygiene: run `/clear` between phases `1->2->3->4`; run `/compact` if a phase grows long; disable Playwright MCP when not actively verifying.
+6. Handoff: summarize extracted values, file changes, verification diffs, screenshot evidence only if fallback was used, and bugs fixed.
+
+---
+
 ### BRAND_DISCOVER
 
-**Purpose:** Browse the live storefront. Identify Swym feature status. Capture brand context.
+**Purpose:** Browse the live storefront. Identify Swym feature status and structural context with text-first probes.
 **Called by:** All THEME_INSPECT and THEME_EDIT sessions.
 **Input:** Merchant store URL.
 
@@ -361,12 +374,14 @@ Array.from(document.querySelectorAll('[id*="swym"],[class*="swym"],[data-swym]')
 
 | Page | What to capture |
 |---|---|
-| Homepage | DOM audit + JS inspection (Step 4) + one brand screenshot |
+| Homepage | DOM audit + JS inspection (Step 4) |
 | Collection | DOM audit only |
 | Product | DOM audit only; for Notify Me: navigate to OOS variant first |
 | Cart | DOM audit -- Save for Later presence |
-| `/pages/swym-wishlist` | DOM eval (Step 5) + mandatory screenshot |
+| `/pages/swym-wishlist` | DOM eval (Step 5) |
 | `/#swym-list` | Panel open eval (Step 6) |
+
+For structure/requirement checks (especially PDP), use accessibility snapshot output first. Do not use screenshots unless the structure cannot be resolved from DOM + accessibility tree.
 
 #### Step 4 -- JS inspection (homepage)
 
@@ -425,22 +440,23 @@ Produce this table as the final output. This is the authoritative baseline for a
 | Wishlist page | Active / Missing | Control Center / Legacy / Custom / Missing |
 | `/#swym-list` panel | Opens / Missing | - |
 
-Also record: vertical, theme name, Swym version, primary color, button style, card image ratio.
+Also record: vertical, theme name, Swym version. When theme files are available (after THEME_PULL), take primary color, button style, font stack, and card ratio from file-extracted values in AUDIT; do not infer visually.
 
 **All-features-working exit:** If all requested features are already Active, stop: "All requested features are already active. Here is the current baseline: [table]. No implementation needed. Would you like to audit configuration quality instead?"
 
 #### Screenshot discipline
 
-- Homepage: one screenshot for brand tone and layout. Delete after recording context in Step 8.
-- Wishlist page: one screenshot mandatory. Delete after recording.
-- All other pages: DOM eval only. No screenshots unless layout is ambiguous from eval results.
+- No mandatory screenshots in BRAND_DISCOVER.
+- Use screenshots only when DOM eval + accessibility snapshot are insufficient.
+- If needed, capture only the relevant component/element (cropped), never full-page.
+- Max one screenshot per checkpoint before change and one after change.
 - Save all screenshots to the session scratchpad (path shown in system prompt as "Scratchpad Directory").
 
 ---
 
 ### VISUAL_EXTRACT
 
-**Purpose:** Extract brand identity from the live store when no theme file access is available. Drives brand-matched implementation on demo store.
+**Purpose:** Extract brand identity using text-first probes when no theme file access is available. Drives brand-matched implementation on demo store.
 **Called by:** THEME_EDIT no-access path (after THEME_PULL fails).
 **Requires:** BRAND_DISCOVER has run.
 
@@ -483,13 +499,13 @@ Array.from(document.styleSheets).flatMap(ss => {
   .slice(0, 40)
 ```
 
-#### Step 4 -- Screenshots for visual reference (up to 3)
+#### Step 4 -- Optional screenshot fallback
 
-Homepage, collection page, product page. Save to scratchpad. Delete after recording brand profile.
+Only if Steps 1-3 are insufficient for a required decision, take one element-cropped screenshot for the specific component in question. Avoid full-page captures.
 
 #### Output
 
-Record brand profile: primary color, accent color, font stack, button border-radius, button style. This drives PLAN and EDIT when working on the demo store.
+Record brand profile: primary color, accent color, font stack, button border-radius, button style. Tag each value with its source (`computed_style` or `css_var`). This drives PLAN and EDIT when working on the demo store.
 
 ---
 
@@ -667,6 +683,17 @@ State the chosen API type explicitly at the start of PLAN.
 
 **Grep budget:** 6 greps for `agency`, `merchant`, `unknown`. 12 greps for `swym_acq`, `swym_support`, `swym_success`. After budget: summarize best-available findings.
 
+#### Brand token extraction (mandatory, file-first)
+
+Extract brand colors and fonts from files before any visual inference:
+
+```bash
+grep -n "color\|font\|typography\|primary\|accent" ./<slug>/config/settings_data.json
+grep -n "^[[:space:]]*--color-\|^[[:space:]]*--font-" ./<slug>/layout/theme.liquid ./<slug>/assets/base.css ./<slug>/assets/theme.css 2>/dev/null
+```
+
+Record extracted values in a compact table with `source` (`settings_data` or `css_var`) and reuse those exact values in PLAN/EDIT. Do not eyeball brand values from screenshots when file values exist.
+
 #### Template layout check (mandatory before any layout file injection)
 
 ```bash
@@ -730,7 +757,7 @@ Do not write any API calls if IMPLEMENTATION_TYPE was not run.
 1. New files to create (names, types, purpose)
 2. Existing files to modify (name, anchor, what changes)
 3. CSS approach -- Path A or Path B (see below)
-4. Actual variable names from THEME_PULL (not placeholders)
+4. Actual extracted values from AUDIT (`settings_data` / `--color-*` / `--font-*`), not placeholders
 5. Which layout file(s) the target templates declare (from AUDIT template layout check)
 
 Wait for user confirmation before starting EDIT.
@@ -905,9 +932,29 @@ Dev server URL (typically `http://127.0.0.1:9292`, but use the actual printed UR
   featurePresent: !!document.querySelector('#swym-atw-pdp-button')
 })
 ```
-3. `browser_console_messages` for JS errors.
-4. `browser_snapshot` for structural layout issues only.
-5. Screenshot only for CSS/visual issues unverifiable by DOM eval.
+3. Computed-style diff via `evaluate()` between reference and target elements (text/JSON output).
+4. `browser_console_messages` for JS errors.
+5. Accessibility snapshot for structural layout issues (PDP/ARIA/text tree) before any screenshot.
+6. Screenshot only for CSS/visual issues that computed-style diff + accessibility snapshot cannot resolve.
+
+Computed-style extraction pattern:
+```js
+const props = ['padding','paddingTop','paddingRight','paddingBottom','paddingLeft','borderRadius','backgroundColor','color','fontSize','fontFamily','fontWeight','lineHeight','letterSpacing','display','gap'];
+const pick = (sel) => {
+  const el = document.querySelector(sel);
+  if (!el) return { found: false, selector: sel };
+  const cs = getComputedStyle(el);
+  const out = { found: true, selector: sel };
+  props.forEach(p => out[p] = cs[p]);
+  return out;
+};
+({
+  reference: pick('<reference-selector>'),
+  target: pick('<target-selector>')
+});
+```
+
+Diff rule: produce a JSON/text diff of `reference` vs `target`; only treat as visual-followup-needed when mismatches are layout-judgment-only.
 
 #### Full Swym sweep (run after every EDIT, before PR_FLOW or DEMO_PUSH)
 
@@ -957,6 +1004,13 @@ Tier 3 (last resort): `shopify theme pull` from live store, overwriting local ch
 
 Ask: "Can you confirm this looks correct before I continue?"
 Do NOT proceed to PUBLISH_CHOICE or DEMO_PUSH without explicit "confirmed" / "approved" / "looks good".
+
+#### Screenshot policy in TEST
+
+- Never take full-page screenshots for verification checkpoints.
+- Capture only the component under test.
+- Max one before-change and one after-change screenshot per checkpoint.
+- Skip screenshots entirely when computed-style diff answers the check.
 
 ---
 
@@ -1192,6 +1246,15 @@ Otherwise (e.g. end of a DEMO_PUSH session): "Would you like a handoff package w
 
 #### Package contents
 
+**0. Extracted values used (required)**
+```
+## Extracted brand tokens
+- primary color: <value> (source: settings_data/css_var)
+- accent color: <value> (source: settings_data/css_var)
+- font stack: <value> (source: settings_data/css_var)
+- button radius: <value> (source: settings_data/css_var)
+```
+
 **1. Code snippets per file**
 ```
 ## File: assets/swymcs-<feature>.css
@@ -1219,6 +1282,15 @@ One block per new or modified file.
 5. Zip and re-upload as an unpublished copy theme: Shopify Admin -> Themes -> Add theme -> Upload.
 6. Preview the unpublished copy. Confirm all Swym features are active.
 7. Publish when ready.
+```
+
+**4. Verification evidence (required)**
+```
+## Verification
+- Computed-style diff summary: <pass/fail + mismatches>
+- Structural check source: accessibility snapshot / DOM eval
+- Screenshot evidence: <none | component screenshot path + why screenshot was needed>
+- Bugs fixed during verification: <list>
 ```
 
 Package delivery is a session-ending point -- emit the `session_end` **TELEMETRY** event (Section 14) with `outcome=completed` here.
