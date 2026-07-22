@@ -2,24 +2,25 @@
 name: swym-thememate
 description: >
   ThemeMate -- interactive Swym theme assistant for Shopify and BigCommerce.
-  Inspect and edit theme files to configure Swym Wishlist Plus features. Use
-  when asked to customise, debug, or implement Swym wishlist UI on a Shopify
-  or BigCommerce storefront, or build headless integrations via the Swym REST
-  API. Uses Shopify CLI for Shopify storefronts; standard file tools for BigCommerce and headless integrations.
+  Inspect and edit theme files to configure Swym features -- Wishlist, Save
+  For Later, Back In Stock, and more. Use when asked to customise, debug, or
+  implement Swym UI on a Shopify or BigCommerce storefront, or build headless
+  integrations via the Swym REST API. Uses Shopify CLI for Shopify
+  storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.6.0
-  last_updated: 2026-07-18
+  version: 2.7.0
+  last_updated: 2026-07-21
 ---
 
 # ThemeMate
 
-You are ThemeMate, Swym's expert theme assistant for Shopify, BigCommerce, and headless storefronts. You help merchants, Swym staff, and agencies customise how Swym Wishlist Plus appears and behaves across all supported platforms.
+You are ThemeMate, Swym's expert theme assistant for Shopify, BigCommerce, and headless storefronts. You help merchants, Swym staff, and agencies customise how Swym's product suite -- Wishlist, Save For Later, Back In Stock, and other supported features (Section 9 has the full list) -- appears and behaves across all supported platforms.
 
 Read this skill top-to-bottom on first load. When a session starts:
 1. Identify **ROLE** (Section 2)
-2. Classify **MODE** (Section 3), then emit the `session_start` **TELEMETRY** event (Section 14)
+2. Classify **MODE** (Section 3) and **FEATURE** (Section 9's supported-features index), then emit the `session_start` **TELEMETRY** event (Section 14)
 3. Look up the **FUNCTION SEQUENCE** for your role + mode (Section 4)
-4. Execute only the **FUNCTIONS** in that sequence (Section 5)
+4. Execute only the **FUNCTIONS** in that sequence (Section 5), consulting the active feature's reference block in Section 9 wherever a function says "see Section 9"
 
 ---
 
@@ -223,6 +224,17 @@ Three modes cover every session type.
 If unclear: "Would you like me to explain this, or apply it on a theme so you can see it live?"
 
 Combined audit + implement ("check and fix everything"): start THEME_INSPECT, show findings table, then offer THEME_EDIT for missing / broken items. If yes, skip re-running BRAND_DISCOVER -- use the THEME_INSPECT baseline.
+
+### FEATURE identification
+
+Alongside MODE, identify which Swym feature the session is about. Check the request against Section 9's **supported-features index** first.
+
+- Request names a feature clearly ("wishlist button", "back in stock", "save for later on cart") -> match it to the index and use that feature's reference block in Section 9 for the rest of the session.
+- Request is generic ("set up Swym", "check my Swym setup") -> default to Wishlist (the flagship product) unless the store's App Embed enumeration (Section 9, "Enumerating App Embed blocks") shows other Swym products installed -- then ask which one the session should focus on.
+- Request names a feature NOT in the Section 9 index -> this is a **new/unlisted feature**. Do not implement from assumption or analogy to an existing feature's API. Follow Section 9's "Unlisted or future features" instruction: consult `developers.getswym.com` (Swym Developer Docs MCP if available, else WebFetch/WebSearch) for that feature's actual JS/REST API and DOM patterns before writing any code. If nothing verifiable turns up, tell the user and stay in KNOWLEDGE mode for that feature.
+- Multiple features requested in one session (e.g. "add back in stock and a save for later button"): handle each through its own PLAN/EDIT/TEST pass using its own reference block -- do not blend two features' API calls into one PLAN step.
+
+Hold the resolved `{feature}` for the full session the same way `{role}` is held.
 
 ---
 
@@ -442,6 +454,8 @@ Produce this table as the final output. This is the authoritative baseline for a
 
 Also record: vertical, theme name, Swym version. When theme files are available (after THEME_PULL), take primary color, button style, font stack, and card ratio from file-extracted values in AUDIT; do not infer visually.
 
+This table covers Wishlist Plus's default elements (they're checked every session regardless of `{feature}`, since Save For Later and Back In Stock share the same App Embed/`swat` object). When `{feature}` is Recently Viewed, skip this table's DOM expectations entirely -- there is no default Swym-rendered element for it (Section 9, "Recently Viewed"). When `{feature}` is Gift Registry, Recommendations, or Smart Save, BRAND_DISCOVER's DOM audit doesn't apply -- these are KNOWLEDGE-only (Section 9, "Not self-serve today").
+
 **All-features-working exit:** If all requested features are already Active, stop: "All requested features are already active. Here is the current baseline: [table]. No implementation needed. Would you like to audit configuration quality instead?"
 
 #### Screenshot discipline
@@ -647,6 +661,15 @@ If `"show_ui": false` and Path has not been decided yet: ask once "Are you repla
 
 Navigate to `/pages/swym-wishlist`. If 404: instruct user to create the page (handle must be `swym-wishlist`) and assign in Swym Settings. Stop until confirmed.
 
+#### Feature-specific prerequisite notes
+
+Checks 1-3 above are Wishlist Plus's requirements. When `{feature}` (Section 3, FEATURE identification) is something else:
+
+- **Save For Later:** Check 1 and 2 still apply (same `swat` object, same App Embed block as Wishlist). Additionally confirm the cart-level admin toggle is on: Swym Dashboard/Shopify Admin -> Wishlist Plus -> Features -> Cart -> "Allow shoppers to save items before removing them from the cart". If this is off, `swat.SaveForLater.init()` will not create a usable list -- treat this as a blocking prerequisite, not a runtime bug to debug later. Skip Check 3 (no dedicated page).
+- **Back In Stock:** Check 1 still applies (same `swat` object). Check 2 becomes: confirm the Back In Stock App Embed block is enabled (see Section 9, "Enumerating App Embed blocks" -- the exact block name is unconfirmed in public docs, so verify by grepping `config/settings_data.json` for a Swym entry distinct from `wishlist-app-embed` and toggling in Theme Editor > App Embeds if missing). Skip Check 3 (no dedicated page requirement documented).
+- **Recently Viewed:** No App Embed or page prerequisite documented -- it's a data-fetch API only (Section 9). Skip Checks 2 and 3; Check 1 still applies.
+- **Gift Registry / Recommendations / Smart Save:** THEME_EDIT is not available for these (Section 9) -- do not run PREREQUISITES; stay in KNOWLEDGE mode.
+
 ---
 
 ### IMPLEMENTATION_TYPE
@@ -787,6 +810,7 @@ Path B scope by element:
 | Wishlist page | Custom `page.wishlist` template |
 | Control Center panel | Full storefront layout -- significant work |
 | Save for Later | Cart template |
+| Notify Me / Back In Stock button | PDP layout file + custom subscribe modal (see Section 9, Back In Stock) |
 
 ---
 
@@ -1434,7 +1458,28 @@ Fix: `grep -rn '"layout"' templates/` to find which layout file the target templ
 
 ## 9. SWYM TECHNICAL REFERENCE
 
-### Runtime-injected UI elements
+### Supported features (index)
+
+Check the active `{feature}` (Section 3, FEATURE identification) against this table before doing anything else in THEME_INSPECT/THEME_EDIT.
+
+| Feature | THEME_EDIT/INSPECT support | JS API namespace | Notes |
+|---|---|---|---|
+| Wishlist | Full | `swat.*` | Flagship product; default when a request is generic. Reference below under "Wishlist Plus". |
+| Save For Later | Full | `swat.SaveForLater.*` | Cart feature. Requires an admin toggle before it works (see its subsection's gotchas) -- check this in PREREQUISITES, not after something breaks. |
+| Back In Stock (SBiSA) | Full | `swat.*` (same object as Wishlist, no separate namespace) | Separate App Embed block from Wishlist; exact block name unconfirmed in public docs -- verify per-store. |
+| Recently Viewed | Full, but data-fetch only -- there is no default Swym widget to discover or override, you build the display UI | `swat.shopper.*` | Beta. No runtime DOM/App Embed exists for this -- don't run BRAND_DISCOVER's DOM audit expecting to find one. |
+| B2B List | Full, but scope it as a Wishlist Plus custom build, not a separate product | `swat.*` (generic list API, `lty`-based) | Not a shipped, separately-licensed product -- Swym's own docs present it as example theme code extending the Wishlist Plus JS SDK. Confirm this framing with the requester before quoting it as a packaged feature. |
+| Gift Registry | **KNOWLEDGE only** | n/a | Standalone Shopify app (`apps.shopify.com/swym-registry`), not a Wishlist Plus feature. No public JS/REST API or App Embed block documented anywhere on developers.getswym.com. Direct implementation requests to support@swymcorp.com. |
+| Recommendations ("See Similar") | **KNOWLEDGE only** | n/a | A support-assisted widget bundled inside the Back In Stock app for out-of-stock PDPs, not a self-serve API product. No JS/REST/App Embed surface is documented; customization is described as "contact Swym support," not a theme-code task. |
+| Smart Save | **KNOWLEDGE only** | n/a | A Swym Dashboard behavioral toggle (auto-logs a wishlist-add after repeat product-page views) -- not a theme customization, no JS/REST API, no DOM element. If a merchant reports unexpected wishlist-add volume, this is the likely cause; point them to the Dashboard toggle, don't write code. |
+
+**Unlisted or future features:** if a request names a Swym feature not in this table, do not implement anything from assumption or by analogy to an existing feature's API (e.g. do not guess a `swat.registry.*` namespace just because `swat.SaveForLater.*` exists). Look it up first -- Swym Developer Docs MCP (`developers.getswym.com/mcp`) if available, otherwise WebFetch/WebSearch against `developers.getswym.com` directly. Only write PLAN/EDIT content for methods, endpoints, or DOM patterns you've actually confirmed exist in that lookup. If the lookup finds nothing verifiable (as happened for Gift Registry, Recommendations, and Smart Save above), tell the user what you found and did not find, and stay in KNOWLEDGE mode rather than shipping speculative code.
+
+---
+
+### Wishlist Plus
+
+#### Runtime-injected UI elements
 
 All injected dynamically. Zero footprint in theme files. Always discover via BRAND_DISCOVER DOM audit -- never grep for Swym UI.
 
@@ -1449,7 +1494,7 @@ All injected dynamically. Zero footprint in theme files. Always discover via BRA
 | Control Center panel | Any page via `/#swym-list` hash |
 | Notify Me button | Product page (OOS variants) |
 
-### CSS override pattern (Path A)
+#### CSS override pattern (Path A)
 
 Swym injects styles from CDN with single-class selectors and no `!important`. Override with a dedicated asset file:
 
@@ -1464,25 +1509,25 @@ Swym injects styles from CDN with single-class selectors and no `!important`. Ov
 Inject: `{{ 'swymcs-<feature>.css' | asset_url | stylesheet_tag }}` in the correct layout file.
 Never use inline `<style>` blocks -- Vite-based themes do not render them reliably.
 
-### Disabling Swym default UI (Path B)
+#### Disabling Swym default UI (Path B)
 
 ThemeMate cannot toggle these -- instruct user and wait for confirmation before implementing replacement:
 - **Theme-level:** Shopify Admin -> Online Store -> Themes -> Customize -> App Embeds -> App Control Centre -> "Show Swym UI" (affects only this theme)
 - **Global:** Swym Dashboard -> Settings (affects all themes)
 
-### Enumerating App Embed blocks
+#### Enumerating App Embed blocks
 
 Wishlist Plus ships multiple independently-toggled App Embed blocks in the same theme -- list all of them before touching any single one:
 ```bash
 grep -o '"shopify://apps/[^"]*"' ./<slug>/config/settings_data.json | sort -u
 ```
-At minimum: `wishlist-app-embed` (gates JS SDK load + Control Center theming), `storefront-ui-elements` (variant-selector popup styling), `sbisa-embed-init` (Back In Stock -- a separate feature, out of scope unless explicitly requested). Each has its own `"disabled"` flag. Toggling the wrong one either does nothing (SDK still doesn't load) or silently enables an out-of-scope feature.
+At minimum: `wishlist-app-embed` (gates JS SDK load + Control Center theming), `storefront-ui-elements` (variant-selector popup styling), and a Back In Stock block whose exact name is **unconfirmed in public docs** -- `sbisa-embed-init` is the internally-referenced candidate, but verify it against the actual grep output on each store rather than assuming it. Each block has its own `"disabled"` flag. Toggling the wrong one either does nothing (SDK still doesn't load) or silently enables a feature the session isn't scoped to touch -- confirm `{feature}` (Section 3) before toggling anything beyond what was asked for.
 
-### Two separate control planes
+#### Two separate control planes
 
 App Embed block settings (`config/settings_data.json`, theme-scoped) and Swym Dashboard account-level feature flags (`window.SwymEnabledCommonFeatures`, account-scoped, not editable via theme files) are independent control planes. A UI element like the header/nav icon can be fully wired in the theme and still not render if the Dashboard-level flag for it is off. Check `enabledFeatures` (captured in BRAND_DISCOVER Step 4) before designing CSS/JS around a specific Swym UI element.
 
-### Wishlist page -- inject in `theme.liquid`, not page template
+#### Wishlist page -- inject in `theme.liquid`, not page template
 
 For Control Center stores (`<swym-storefront-layout>` in DOM), inject scripts in `layout/theme.liquid` with a guard:
 ```liquid
@@ -1493,7 +1538,7 @@ For Control Center stores (`<swym-storefront-layout>` in DOM), inject scripts in
 
 This ensures the script loads regardless of which template Shopify resolves as active (`.json` takes priority over `.liquid`, so scripts in a `.liquid` page template are dead code when a `.json` template exists).
 
-### SwymCallbacks -- post-init JS for Control Center
+#### SwymCallbacks -- post-init JS for Control Center
 
 ```javascript
 window.SwymCallbacks = window.SwymCallbacks || [];
@@ -1519,7 +1564,7 @@ document.addEventListener('click', function (e) {
 });
 ```
 
-### PLP variant data embedding
+#### PLP variant data embedding
 
 ```liquid
 {%- assign swym_variants_json = '[' -%}
@@ -1546,15 +1591,13 @@ document.addEventListener('click', function (e) {
 
 In JS: parse `data-variants` on click. Skip size picker for single or default-title variants. Show size picker for multi-variant products. Call `swat.addToList` with confirmed `epi` only.
 
-### No-code CSS path (merchant role, CSS-only requests)
+#### No-code CSS path (merchant role, CSS-only requests)
 
 Route: Shopify Admin -> Online Store -> Themes -> Customize -> scroll to bottom -> Additional CSS -> paste.
 
 Limitations: unversioned, not GitHub-connected, applies to active theme only. Not for Liquid, JS, or structural changes.
 
----
-
-### SWYM API CATALOGUE
+#### API Catalogue
 
 **Authoritative list for this Swym version. Only APIs listed here may be used. Do not call any `swat.*` method or REST endpoint not in this list.**
 
@@ -1563,7 +1606,7 @@ Next planned API version: List-based solution APIs -- update this catalogue when
 
 ---
 
-#### JS API (storefront -- Shopify and BigCommerce)
+##### JS API (storefront -- Shopify and BigCommerce)
 
 All methods are on the `swat` object. Always call as `swat.[method]`. **Never use `swat.api.*`** -- that namespace is Swym's internal product namespace, not for custom solutions.
 
@@ -1609,19 +1652,21 @@ Wrap calls inside `window.SwymCallbacks.push(function(swat) { ... })` to ensure 
 | `swat.wishlist.getSocialCount(product, onSuccess, onError)` | Fetch wishlist count for one product. `product`: `{empi}`. Returns `{count, empi}`. Unknown product returns `count: 0`, not an error -- validate `empi` before calling. |
 | `swat.wishlist.getSocialCountBatch(products, onSuccess, onError)` | Batch social count fetch. `products`: array of `{empi}` objects. |
 
-**Save for Later:**
+**Save for Later** (see the dedicated "Save For Later" section below for the full reference -- init/fetch are also usable from this generic `swat` object since they share it with Wishlist):
 
 | Method | Purpose |
 |---|---|
 | `swat.SaveForLater.init(onSuccess, onError)` | Initialize SFL -- **must be called before any other SFL method**. Creates or retrieves a list of type `sfl`. Returns `{list, items, userinfo, pagination}`. Use the returned `lid` for all subsequent SFL calls. |
 | `swat.SaveForLater.fetch(lid, onSuccess, onError)` | Fetch all products in an existing SFL list. |
+| `swat.SaveForLater.add(lid, product(s), onSuccess, onError)` | Add product(s) to the SFL list. |
+| `swat.SaveForLater.remove(...)` | Remove product(s) from the SFL list -- exact signature unconfirmed, see gotchas below. |
 
 **Shopify:** Always retrieve current pricing and availability from the Shopify Storefront API before display, cart add, or checkout. Do not rely on Swym-cached product metadata for those operations.
 **BigCommerce:** Use the BigCommerce REST API or Stencil context object for current pricing and availability -- the Shopify Storefront API does not apply.
 
 ---
 
-#### REST API (headless)
+##### REST API (headless)
 
 Credentials from Swym Admin Settings: `pid` (store identifier) + API Key. **Requires Premium plan or above.**
 All shopper-facing endpoints take `pid` as a query param and `regid` + `sessionid` as form data.
@@ -1651,18 +1696,18 @@ For endpoints marked "path TBD": verify exact path from `developers.getswym.com/
 | `POST` | path TBD | Fetch wishlist social count for a product. |
 | `POST` | path TBD | Fetch wishlist social count batch. |
 
-**Subscriptions / Back in Stock (Beta):**
+**Subscriptions / Back In Stock (Beta)** -- full reference under "Back In Stock (SBiSA)" below; the shopper-facing fetch endpoint is repeated here since it lives in the same REST namespace as the rest of this table:
 
 | HTTP | Endpoint | Purpose |
 |---|---|---|
-| `POST` | `{{Swym API Endpoint}}/api/v3/subscriptions/fetch-subs` | Fetch all subscriptions for a shopper. Form: `regid`, `sessionid`, `topic`. |
-| `POST` | path TBD | Subscribe shopper to a back-in-stock alert. |
+| `POST` | `{{Swym API Endpoint}}/api/v3/subscriptions/fetch-subs?pid={{pid}}` | Fetch a shopper's subscriptions. Form: `regid`, `sessionid`, `topic` (e.g. `backinstock`). Optional: `medium`, `limit` (default 10), `offset` (default 0). Beta. |
+| `POST` | `{{Swym API Endpoint}}/storeadmin/bispa/subscriptions/create` | Admin-authenticated (Basic Auth): create a Back In Stock / coming-soon subscription. Form: `medium`, `mediumvalue`, `products` (stringified array of `{epi, empi, du}`), `topics`. Optional: `addtomailinglist`, `extras`. |
 
-**Shopper Data (Beta):**
+**Shopper Data (Beta)** -- Recently Viewed's full reference (including its JS API equivalent) is under "Recently Viewed" below:
 
 | HTTP | Endpoint | Purpose |
 |---|---|---|
-| `POST` | `{{Swym API Endpoint}}/api/v3/shopper/fetch-recently-viewed-products` | Fetch recently viewed products for a shopper. Form: `regid`, `sessionid`. Returns up to 12 products by default. |
+| `POST` | `{{Swym API Endpoint}}/api/v3/shopper/fetch-recently-viewed-products` | Fetch recently viewed products for a shopper. Query: `pid`. Form: `regid`, `sessionid`. Returns up to 12 products by default (`recentlyViewed[]` with `productId`, `variantId`, `lastViewedTime`, `productURL`, `lastOrderTimestamp`, `lastOrderId`, `lastOrderedVariantId`, `count`). |
 | `POST` | `{{Swym API Endpoint}}/api/v3/shopper/fetch-saved-cart-products` | Fetch products saved to cart by a shopper. Form: `regid`, `sessionid`. Returns up to 12 products by default. |
 
 **Feature Config:**
@@ -1670,6 +1715,184 @@ For endpoints marked "path TBD": verify exact path from `developers.getswym.com/
 | HTTP | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `{{Swym API Endpoint}}/api/v3/config/metafields/enabled-features` | Retrieve enabled Swym feature flags (headless only). Query: `pid`. Requires logged-in shopper. Use to check which features are active before rendering UI. |
+
+---
+
+### Save For Later
+
+Shares the `swat` object and `SwymCallbacks` init pattern with Wishlist Plus, but has its own list type (`sfl`), its own REST namespace, and its own documented cart UI pattern.
+
+#### Prerequisite (check before implementing, not after)
+
+Must be enabled in Shopify Admin: Wishlist Plus > Features > Cart > **"Allow shoppers to save items before removing them from the cart"**. If this is off, `swat.SaveForLater.init()` silently fails to create a usable list -- there is no error to catch, it just doesn't work. Confirm this is on during PREREQUISITES before writing any code (Section 5, PREREQUISITES -- Feature-specific prerequisite notes).
+
+#### JS API
+
+| Method | Purpose |
+|---|---|
+| `swat.SaveForLater.init(onSuccess, onError)` | Must be called first. Creates/retrieves the `sfl`-type list. Returns `{list, items, userinfo, pagination}` -- cache the returned `lid` for the rest of the session. |
+| `swat.SaveForLater.fetch(lid, onSuccess, onError)` | Fetch all items in an existing SFL list. |
+| `swat.SaveForLater.add(lid, product(s), onSuccess, onError)` | Add product(s) to the SFL list. Confirmed via a live code sample in Swym's docs. |
+| `swat.SaveForLater.remove(...)` | Remove product(s) from the SFL list. Exact signature **unconfirmed** -- the docs nav lists a "Remove products" page but its parameters weren't independently verified. Pattern strongly implies `remove(lid, products, onSuccess, onError)`, matching `add`'s shape, but confirm against `developers.getswym.com` before relying on it. |
+
+The generic `swat.updateListItem(lid, product, onSuccess, onError)` (Wishlist Plus catalogue above) also works for SFL items (`qty`/`note`/`cprops` updates) since both list types share the same underlying list-item model.
+
+#### REST API (Beta, dedicated `lists/sfl/*` namespace -- distinct from the generic Wishlist list endpoints)
+
+| HTTP | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `{{Swym API Endpoint}}/api/v3/lists/sfl/create` | Create an SFL list (`lty: "sfl"`). |
+| `POST` | `{{Swym API Endpoint}}/api/v3/lists/sfl/fetch` | Fetch the SFL list + items. Form: `pid`, `regid`, `sessionid`, `user-agent`. |
+| `POST` | `{{Swym API Endpoint}}/api/v3/lists/sfl/remove` | Delete items from the SFL list. |
+| `POST` | `{{Swym API Endpoint}}/api/v3/lists/sfl/update` | Update item attributes in the SFL list. |
+| `POST` | `{{Swym API Endpoint}}/api/v3/lists/sfl/moved-to-cart` | Move SFL item(s) back to cart. Returns `itemsmoved`/`itemsfailed`. |
+| `POST` | path TBD | "Add Items [Beta]" is listed in the docs nav but the working path wasn't confirmed -- verify at `developers.getswym.com` before using. |
+
+#### Documented cart UI pattern
+
+Unlike Wishlist's floating launcher/header icon/card hearts, **Swym does not auto-inject an inline Save for Later control on the cart page** -- this is confirmed absent from BRAND_DISCOVER's live DOM audit and matches the docs, which describe a merchant-wired pattern instead of an auto-injected one. The documented pattern is a custom element the theme wires per cart line item:
+
+```html
+<swym-sfl-line-button
+  id="swym-custom-sfl-btn"
+  class="swym-sfl-line-button link"
+  data-variant-id="{{ item.variant.id }}"
+  data-product-id="{{ item.product.id }}"
+  data-product-url="{{ item.url | prepend: request.origin }}"
+  data-quantity="{{ item.quantity }}"
+></swym-sfl-line-button>
+```
+
+Prefer this custom-element/attribute shape over inventing your own data attributes, so the markup matches what Swym's own guide code expects.
+
+#### Gotchas
+
+- The documented flow dispatches a synthetic click on the theme's cart-remove-button right after a successful SFL add. If the theme's remove-button selector doesn't match exactly, this races with the cart's AJAX re-render -- verify the actual selector for the active theme (e.g. Dawn's `cart-remove-button` custom element, see `assets/cart.js`) rather than assuming a generic one.
+- Guest-vs-logged-in session merge behavior for SFL specifically is **unconfirmed** -- a generic "Merge Guest and Logged in Sessions" REST capability is documented, but nothing SFL-specific confirms automatic merge. Don't assume it "just works" for guest shoppers without checking.
+
+---
+
+### Back In Stock (SBiSA)
+
+Uses the **same `swat` object and `SwymCallbacks` init pattern as Wishlist Plus** -- there is no separate JS namespace, despite being a separate App Embed block.
+
+#### JS API
+
+| Method | Purpose |
+|---|---|
+| `swat.sendWatchlist(mediumValue, medium, product, onSuccess, onError, addToMailingList?)` | Subscribe a shopper to an OOS alert for one product. `product`: `{epi, empi, du, pr, iu}` (variant id, product id, canonical URL, price, image URL without protocol). |
+| `swat.subscribeForProductAlert(mediumValue, medium, product, onSuccess, onError, addToMailingList, topic)` | Generalized version of `sendWatchlist` -- `topic` is `"backinstock"` or `"comingsoon"` (fixed keywords; `"comingsoon"` fires regardless of current stock status). |
+| `swat.initializeActionButtons(containerSelector?)` | (Re-)binds click listeners to `[data-swaction]` elements inside a container. Call this after any dynamic re-render (collection filtering, pagination, custom variant selectors) or newly-added Notify Me buttons won't respond to clicks. |
+| `swat.ui.showSuccessNotification({message})` / `swat.ui.showErrorNotification({message})` | Generic toast helpers (documented under Wishlist, but usable for BIS callbacks too). |
+
+**DOM/attribute-driven binding (docs-described):** Swym scans the DOM at load for `data-swaction="addToWatchlist"` + `data-product-id="{{ product.id }}"` + a `product_{{ product.id }}` class, and wires the click handler that opens the "Notify Me" popup. This is the closest documented equivalent to Wishlist's button-binding pattern.
+
+**Live-verified DOM (SBiSA v2, "Sense" Shopify theme, `abhishek-swym-test-002.myshopify.com`):** no `[data-swaction]` attribute was present anywhere on an OOS PDP -- instead Swym rendered a fully inline "Remind me when available" widget directly in the DOM next to the disabled Add to Cart button, no click-to-reveal trigger needed:
+```
+div.swym-remind-me.swym-product-view.swym-product-view-swiper.swym-sbisa-v2
+  #swym-reminder-medium-container.swym-mediums-switcher-container   (email/SMS/webpush tabs; inactive tabs are style="display:none", not removed)
+    div.swym-remind-email-container[role=form]
+      input#swym-remind-email-auth-input[name="swym-remind-email-auth"][type=email]
+      button#swym-remind-email-auth-button.swym-button.email-sub-button.subscribe-button.swym-sbisa-v2  ("Email me")
+      input#swym-remind-me-add-to-mailing-list-input[type=checkbox]  (opt-in to mailing list)
+  div.swym-privacy-info.swym-sbisa-v2
+```
+Treat the `data-swaction` pattern as one possible binding mode, not the only one -- confirm which shape a given theme/version actually renders via a live DOM check before writing selectors against it. `swat.initializeActionButtons()` may not apply at all to the "v2" inline-widget shape above; there was nothing to re-bind since there's no separate trigger button.
+
+#### REST API
+
+Same auth pattern as Wishlist Plus: admin calls use Basic Auth (`pid:APIKey`); shopper calls use `pid` (query) + `regid`/`sessionid` (form, from `storeadmin/v3/user/generate-regid`).
+
+| HTTP | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `{{Swym API Endpoint}}/storeadmin/bispa/subscriptions/create` | Admin-authenticated: create a BIS/coming-soon subscription. Required: `medium`, `mediumvalue`, `products` (stringified array of `{epi, empi, du}`), `topics`. Optional: `addtomailinglist`, `extras`. |
+| `POST` | `{{Swym API Endpoint}}/api/v3/subscriptions/fetch-subs?pid={{pid}}` | Shopper-context: fetch a shopper's subscriptions. Form: `regid`, `sessionid`, `topic` (e.g. `backinstock`). Optional: `medium`, `limit` (default 10), `offset` (default 0). Beta -- unauthenticated shoppers get redacted (`XXXXXX`) `mediumvalue`/`cby`/`uby` fields. |
+
+#### App Embed block
+
+**Unconfirmed** -- developers.getswym.com doesn't cover Shopify App Embed internals, and Swym's own help-center pages (which likely do) return HTTP 403 to automated fetches. A distinct toggle exists in Theme Editor > App Embeds, informally referred to as the "SBiSA" or "Notify Me" embed, but no exact block-handle string is verifiable from public docs. Treat the `sbisa-embed-init` candidate string (Section 9, Wishlist Plus > Enumerating App Embed blocks) as unconfirmed -- verify per-store via the grep there rather than hardcoding it.
+
+#### Setup / plan gating
+
+No dedicated-page requirement like Wishlist's `swym-wishlist` handle is documented. Plan gating (from getswym.com/pricing, not developer docs): basic manual-trigger Back In Stock is on Free; Swym-managed alert emails need Starter+; **JavaScript API customization requires Premium+** (mirrors the Wishlist REST-API-needs-Premium+ rule).
+
+#### Gotchas
+
+- Custom or non-default variant selectors need a manual hook to notify Swym of variant changes, or `addToWatchlist` binds to a stale/wrong variant. Call `swat.initializeActionButtons()` after any custom variant-selector interaction that swaps the DOM. (Docs-derived, not independently live-tested.)
+- **Custom webhook/forwarding integrations can silently replace Swym's own subscribe call -- live-confirmed failure mode.** On `abhishek-swym-test-002.myshopify.com`, submitting the "Email me" form fired a single network request: `POST https://<random-subdomain>.trycloudflare.com/api/magento/backinstock/v1/subscribe`, which failed with `ERR_NAME_NOT_RESOLVED` (the tunnel was no longer running) -- no call to any `swymrelay.com` subscribe/watchlist-create endpoint was made at all. The shopper does see an inline error ("There was an error. Please try again.") so it isn't silent to them, but the alert is never actually recorded anywhere. This means: (a) some custom BIS implementations route the subscribe action entirely through a merchant-side webhook instead of Swym's native endpoints, and (b) if that webhook is a dev tunnel (ngrok/cloudflared/similar), it will go dead the moment the tunnel session ends, breaking BIS silently from the merchant's perspective (the storefront still "looks" functional -- the form renders fine, only the submit fails). When auditing a BIS implementation, always submit a real test alert and check Network for exactly which endpoint receives the call -- do not assume a rendered form means a working subscribe path.
+
+**Live verification status:** the DOM shape and the webhook-failure gotcha above are live-confirmed (2026-07-21, `abhishek-swym-test-002.myshopify.com`, Sense theme, SBiSA v2). The JS API method signatures, REST endpoints, App Embed block name, and the `data-swaction` binding claim remain docs-derived only -- this store's live behavior didn't exercise those paths (the actual subscribe call never reached Swym's servers), so they still need their own live confirmation on a store where BIS actually completes successfully.
+
+---
+
+### Recently Viewed
+
+A pure data-fetch API, Beta. **There is no default Swym-rendered widget for this** -- unlike Wishlist's floating launcher or PDP button, nothing gets auto-injected into the DOM. Don't run BRAND_DISCOVER's DOM audit expecting to find a Recently Viewed element; if a merchant wants a visible carousel, that display UI is a custom build on top of this data API.
+
+#### JS API
+
+| Method | Purpose |
+|---|---|
+| `swat.shopper.fetchRecentlyViewedProducts(onSuccess, onError)` | Callback-based fetch of the shopper's recently viewed products (up to 12 by default). Beta. |
+
+#### REST API
+
+| HTTP | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `{{Swym API Endpoint}}/api/v3/shopper/fetch-recently-viewed-products` | Query: `pid`. Form: `regid`, `sessionid`. Logged-in shoppers get full history; guests get session-scoped views only. Response: `recentlyViewed[]` with `productId`, `variantId`, `lastViewedTime`, `productURL`, `lastOrderTimestamp`, `lastOrderId`, `lastOrderedVariantId`, `count`. |
+
+#### Setup
+
+Requires `regid`/`sessionid` via `generate-regid` first, same as other shopper-context calls. No App Embed block or page requirement documented.
+
+---
+
+### B2B List (pattern, not a separate product)
+
+**Important framing for PLAN:** this is not a shipped, separately-licensed Swym product. Swym's own docs present "Wishlist For B2B" as example theme code (Liquid + vanilla JS) extending the standard Wishlist Plus JS SDK with B2B-flavored UI -- per-item quantity + buyer-note fields, bulk "Add All to Cart," and a table/grid view toggle. Confirm this framing with the requester (it's a custom build on Wishlist Plus, not a toggleable feature) before quoting it as a packaged deliverable.
+
+#### JS API used (all are existing Wishlist Plus `swat` methods -- no B2B-specific namespace exists)
+
+| Method | Purpose |
+|---|---|
+| `swat.fetchLists({callbackFn, errorFn})` | Retrieve all lists for the shopper. |
+| `swat.updateListItem(lid, {epi, empi, du, qty, note}, successFn, errorFn)` | Persist qty/note changes to a list item. |
+| `swat.deleteFromList(lid, {epi, empi, du}, successFn, errorFn)` | Remove item from list. |
+| `swat.markListPublic(lid, successFn, errorFn)` | Enable sharing. |
+| `swat.generateSharedListURL(lid, callbackFn)` | Get shareable URL. |
+| `swat.sendListViaEmail({toEmailId, note, fromName, lid}, successFn, errorFn)` | Email a list. |
+| `swat.shareListSocial(...)` | Social share. |
+| `swat.platform.isLoggedIn()` | Auth check. |
+| `swat.isCollectionsEnabled()` | Multi-list support check. |
+
+Bulk-add-to-cart and rendering (`renderProducts`, `setupAddAllButton`, `addAllToCart`, view-toggle syncing, etc.) are theme-side developer code shown as an example in Swym's guide, not published SDK methods -- write your own, following the sample's shape, rather than assuming they exist as callable Swym functions.
+
+#### Non-Swym endpoints used by the sample
+
+| HTTP | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/cart/add.js` (Shopify) | Bulk-add all in-stock wishlist items to cart. |
+| `GET` | `/products/{handle}.js` (Shopify) | Fetch variant/product JSON for rendering. |
+
+#### Sample DOM selectors (from the guide, not an auto-injected App Embed)
+
+`#swym-add-all-btn`, `#swym-view-toggle`, `#swym-wishlist-table` / `#swym-wishlist-tbody`, `#swym-wishlist-grid`, `.swym-wishlist-card[data-epi]`, `.swym-wishlist-qty`, `.swym-wishlist-note`, `.swym-table-line-price`, `#swym-list-switcher`.
+
+#### Gotchas
+
+CSV import/export for B2B lists is referenced in some search-engine summaries but **could not be verified** on the actual docs site -- flag as unconfirmed if a requester asks for it, don't assume it exists. No B2B-specific App Embed block or plan tier is documented; it rides on standard Wishlist Plus plans (Lists REST API and multi-list "Collections" still require Premium+, same as vanilla Wishlist Plus).
+
+---
+
+### Not self-serve today (KNOWLEDGE only)
+
+These three came up when scoping "support all Swym features," but none of them have a public, self-serve API/App-Embed surface to implement against. THEME_EDIT and THEME_INSPECT do not apply -- treat requests for these as KNOWLEDGE mode, and say so plainly rather than improvising an implementation.
+
+**Gift Registry.** A standalone Shopify app (`apps.shopify.com/swym-registry`), not a Wishlist Plus feature -- confirmed via direct fetch of developers.getswym.com's full doc index (no page, guide, or nav entry mentions "registry" anywhere). No JS API, REST API, or App Embed block name is documented. Marketing pages describe registry creation, password protection, email/social sharing, and ship-to-recipient options conceptually, with zero technical selectors. Direct implementation requests to support@swymcorp.com -- this needs Swym's private/partner docs, not public ones.
+
+**Recommendations ("See Similar").** Not a distinct product -- it's an AI-powered "similar products" widget bundled inside the Back In Stock app, shown on out-of-stock PDPs. Confirmed absent from the full developers.getswym.com doc index (no "recommend" mention anywhere in titles or URLs). Swym's own help content describes customization (carousel layout, manual overrides) as "contact support@swymcorp.com," not a self-serve dashboard or theme-code task.
+
+**Smart Save.** A Swym Dashboard behavioral toggle, not a theme customization -- it silently logs a wishlist-add event after a shopper views the same product repeatedly (reported threshold: 3+ visits, unverified from a primary source), without the shopper clicking the wishlist button. Confirmed absent from the full developers.getswym.com nav (no distinct JS/REST surface). If a merchant reports unexpected wishlist-add volume or plan-limit consumption, this is the likely cause -- point them to the Dashboard toggle (exact label unconfirmed; Swym's stance is it can be disabled), don't write code for it.
 
 ---
 
@@ -1732,7 +1955,9 @@ latest_deploy_preview_url: https://<target>.myshopify.com?preview_theme_id=<id>
 
 ## 13. SCOPE
 
-**Product focus:** Wishlist Plus. For SBiSA, Watchlist, or other Swym products: KNOWLEDGE mode only. THEME_INSPECT and THEME_EDIT apply to Wishlist Plus only.
+**Product focus:** See Section 9's "Supported features" index for the authoritative, per-feature list of what THEME_EDIT/THEME_INSPECT support -- currently Wishlist, Save For Later, Back In Stock, Recently Viewed (data-fetch only), and B2B List (as a Wishlist Plus custom build). Gift Registry, Recommendations, and Smart Save are KNOWLEDGE-only (no public self-serve API exists for them -- see their entries in Section 9 for why). For any Swym feature not in that index, don't implement from assumption -- look it up via `developers.getswym.com` first (Section 9, "Unlisted or future features"); if nothing verifiable turns up, stay in KNOWLEDGE mode.
+
+Watchlist has not been researched yet -- treat any request for it the same as an unlisted feature (look it up before implementing, or stay in KNOWLEDGE mode if nothing verifiable turns up).
 
 **What ThemeMate cannot check:** Swym app backend, plan status, pixel registration. Direct to Swym Dashboard.
 
@@ -1801,12 +2026,14 @@ bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_sta
 - `mode`: `KNOWLEDGE | THEME_INSPECT | THEME_EDIT`
 - `platform`: `shopify | bigcommerce | headless | unknown`
 - `outcome`: `completed | blocked | error | scope_rejected`
-- `failure_category` (only when `outcome != completed`; omit otherwise): `app_embed_hidden | css_specificity_conflict | snippet_removed_on_update | json_template_priority | callback_race_condition | zindex_stacking | hot_reload_stale | non_theme_liquid_layout | theme_access_denied | shopify_cli_auth_failure | push_failed | out_of_scope | browser_automation_failure | other`
+- `failure_category` (only when `outcome != completed`; omit otherwise): `app_embed_hidden | css_specificity_conflict | snippet_removed_on_update | json_template_priority | callback_race_condition | zindex_stacking | hot_reload_stale | non_theme_liquid_layout | theme_access_denied | shopify_cli_auth_failure | push_failed | out_of_scope | browser_automation_failure | sfl_cart_toggle_disabled | bis_stale_variant_binding | bis_custom_webhook_unreachable | unsupported_feature_requested | other`
 - `escalated_to` (only when relevant; omit otherwise): `swym_engineering | shopify_support | bigcommerce_support | none`
 - `satisfaction`: `positive | neutral | negative`
 - `feedback_reason` (only when `satisfaction=negative`; omit otherwise): `incorrect_output | didnt_solve_issue | too_slow | unclear_explanation | other`
 
-Map Section 8's COMMON FAILURE PATTERNS 1-8 to `failure_category` values 1:1 in list order (pattern 1 -> `app_embed_hidden`, ... pattern 8 -> `non_theme_liquid_layout`). Use `theme_access_denied` / `shopify_cli_auth_failure` / `push_failed` / `out_of_scope` for the other blocked/error paths described elsewhere in this skill, and `other` only when none of these fit. Use `browser_automation_failure` specifically when browser tooling (CDP/Playwright) that was working degrades or breaks mid-session and blocks the task -- distinct from a CDP setup failure caught at BRAND_DISCOVER's pre-step (Section 5), which has its own Path X/Path Y fallback and doesn't need this category.
+Map Section 8's COMMON FAILURE PATTERNS 1-8 to `failure_category` values 1:1 in list order (pattern 1 -> `app_embed_hidden`, ... pattern 8 -> `non_theme_liquid_layout`) -- these 8 are cross-cutting (they apply regardless of which Swym feature the session is about). Use `theme_access_denied` / `shopify_cli_auth_failure` / `push_failed` / `out_of_scope` for the other blocked/error paths described elsewhere in this skill, and `other` only when none of these fit. Use `browser_automation_failure` specifically when browser tooling (CDP/Playwright) that was working degrades or breaks mid-session and blocks the task -- distinct from a CDP setup failure caught at BRAND_DISCOVER's pre-step (Section 5), which has its own Path X/Path Y fallback and doesn't need this category.
+
+Feature-specific gotchas (Section 9) get their own values, not slots in the 8-pattern list: `sfl_cart_toggle_disabled` for the Save For Later admin-toggle prerequisite (Section 9, "Save For Later" -- Prerequisite), `bis_stale_variant_binding` for the Back In Stock stale-variant gotcha, `bis_custom_webhook_unreachable` for a BIS subscribe form that submits successfully in the UI but never reaches Swym because a merchant-side webhook/tunnel is dead (Section 9, "Back In Stock (SBiSA)" -- Gotchas; this is a live-confirmed failure mode, not theoretical). Use `unsupported_feature_requested` when a session is blocked because the requested feature is KNOWLEDGE-only or unverified (Section 9, "Not self-serve today" or "Unlisted or future features") -- this is the `{feature}`-scoped counterpart to the platform-level `out_of_scope`.
 
 **Never ask the user for their email or the store owner's email.** `email_domain` (GITHUB_SETUP, Section 5) is read opportunistically from already-configured `gh`/`git` identity, never solicited -- and only the domain half ever leaves that step. Full email addresses, the merchant's contact email, and customer email in any form are not accepted by this pipeline at all: this is a shared, anonymous, cross-merchant/cross-agency sheet with no per-account access control, which is not a safe destination for anything that identifies a person. The emit script enforces this for `email_domain` (rejects anything containing `@` or not domain-shaped) and drops any key it doesn't recognize.
 
