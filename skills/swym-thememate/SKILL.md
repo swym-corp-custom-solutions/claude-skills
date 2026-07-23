@@ -810,7 +810,7 @@ Path B scope by element:
 | Wishlist page | Custom `page.wishlist` template |
 | Control Center panel | Full storefront layout -- significant work |
 | Save for Later | Cart template |
-| Notify Me / Back In Stock button | PDP layout file + custom subscribe modal (see Section 9, Back In Stock) |
+| Notify Me / Back In Stock button | PDP layout file + custom subscribe UI -- modal, inline widget, or other pattern depending on which DOM shape the store renders (see Section 9, Back In Stock for the documented shapes) |
 
 ---
 
@@ -1489,10 +1489,11 @@ All injected dynamically. Zero footprint in theme files. Always discover via BRA
 | Floating launcher | All pages |
 | Header wishlist icon | All pages |
 | Collection card heart icon | Collection / search pages |
-| Save for Later button | Cart page |
 | Default wishlist page UI | `/pages/swym-wishlist` |
 | Control Center panel | Any page via `/#swym-list` hash |
 | Notify Me button | Product page (OOS variants) |
+
+Save For Later has no entry here -- unlike these Wishlist elements, Swym does not auto-inject a cart-page SFL control. See Section 9, "Save For Later" -- Documented cart UI pattern.
 
 #### CSS override pattern (Path A)
 
@@ -1707,7 +1708,7 @@ For endpoints marked "path TBD": verify exact path from `developers.getswym.com/
 
 | HTTP | Endpoint | Purpose |
 |---|---|---|
-| `POST` | `{{Swym API Endpoint}}/api/v3/shopper/fetch-recently-viewed-products` | Fetch recently viewed products for a shopper. Query: `pid`. Form: `regid`, `sessionid`. Returns up to 12 products by default (`recentlyViewed[]` with `productId`, `variantId`, `lastViewedTime`, `productURL`, `lastOrderTimestamp`, `lastOrderId`, `lastOrderedVariantId`, `count`). |
+| `POST` | `{{Swym API Endpoint}}/api/v3/shopper/fetch-recently-viewed-products?pid={{pid}}` | Fetch recently viewed products for a shopper. Form: `regid`, `sessionid`. Returns up to 12 products by default (`recentlyViewed[]` with `productId`, `variantId`, `lastViewedTime`, `productURL`, `lastOrderTimestamp`, `lastOrderId`, `lastOrderedVariantId`, `count`). |
 | `POST` | `{{Swym API Endpoint}}/api/v3/shopper/fetch-saved-cart-products` | Fetch products saved to cart by a shopper. Form: `regid`, `sessionid`. Returns up to 12 products by default. |
 
 **Feature Config:**
