@@ -1660,7 +1660,7 @@ Wrap calls inside `window.SwymCallbacks.push(function(swat) { ... })` to ensure 
 | `swat.SaveForLater.init(onSuccess, onError)` | Initialize SFL -- **must be called before any other SFL method**. Creates or retrieves a list of type `sfl`. Returns `{list, items, userinfo, pagination}`. Use the returned `lid` for all subsequent SFL calls. |
 | `swat.SaveForLater.fetch(lid, onSuccess, onError)` | Fetch all products in an existing SFL list. |
 | `swat.SaveForLater.add(lid, product(s), onSuccess, onError)` | Add product(s) to the SFL list. |
-| `swat.SaveForLater.remove(...)` | Remove product(s) from the SFL list -- exact signature unconfirmed, see gotchas below. |
+| `swat.SaveForLater.remove` | Remove product(s) from the SFL list. **Signature unconfirmed — do not use in implementations until verified in Swym docs (see Section 9, Save For Later).** |
 
 **Shopify:** Always retrieve current pricing and availability from the Shopify Storefront API before display, cart add, or checkout. Do not rely on Swym-cached product metadata for those operations.
 **BigCommerce:** Use the BigCommerce REST API or Stencil context object for current pricing and availability -- the Shopify Storefront API does not apply.
