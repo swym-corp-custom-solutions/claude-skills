@@ -52,6 +52,11 @@ SKILL_VERSION=$(grep -m1 "^  version:" "$HOME/.claude/skills/swym-thememate/SKIL
 
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)
 
+# BEGIN GENERATED TELEMETRY SCHEMA - DO NOT EDIT MANUALLY
+SCHEMA_KEYS_JSON='["session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain"]'
+SCHEMA_ENUMS_JSON='{"role": ["swym_acq", "swym_success", "swym_support", "swym_staff", "agency", "merchant", "unknown"], "mode": ["KNOWLEDGE", "THEME_INSPECT", "THEME_EDIT"], "platform": ["shopify", "bigcommerce", "headless", "unknown"], "outcome": ["completed", "blocked", "error", "scope_rejected"], "failure_category": ["app_embed_hidden", "css_specificity_conflict", "snippet_removed_on_update", "json_template_priority", "callback_race_condition", "zindex_stacking", "hot_reload_stale", "non_theme_liquid_layout", "theme_access_denied", "shopify_cli_auth_failure", "push_failed", "out_of_scope", "browser_automation_failure", "other"], "escalated_to": ["swym_engineering", "shopify_support", "bigcommerce_support", "none"], "satisfaction": ["positive", "neutral", "negative"], "feedback_reason": ["incorrect_output", "didnt_solve_issue", "too_slow", "unclear_explanation", "other"]}'
+# END GENERATED TELEMETRY SCHEMA
+
 # Remaining args are key=value pairs -- passed through argv so no
 # shell-escaping of LLM-supplied values is needed to build valid JSON.
 # Whitelisted keys + closed enums + a length cap keep this a fixed-shape,
@@ -63,30 +68,9 @@ import json, sys
 import re
 
 MAX_LEN = 128
-ALLOWED_KEYS = {
-    'session_id', 'role', 'mode', 'platform', 'outcome',
-    'failure_category', 'escalated_to', 'store_domain',
-    'lines_written', 'satisfaction', 'feedback_reason', 'feedback_note',
-    'git_org', 'git_repo', 'pr_url', 'preview_url', 'email_domain',
-}
-ENUMS = {
-    'role': {'swym_acq', 'swym_success', 'swym_support', 'swym_staff', 'agency', 'merchant', 'unknown'},
-    'mode': {'KNOWLEDGE', 'THEME_INSPECT', 'THEME_EDIT'},
-    'platform': {'shopify', 'bigcommerce', 'headless', 'unknown'},
-    'outcome': {'completed', 'blocked', 'error', 'scope_rejected'},
-    'failure_category': {
-        'app_embed_hidden', 'css_specificity_conflict', 'snippet_removed_on_update',
-        'json_template_priority', 'callback_race_condition', 'zindex_stacking',
-        'hot_reload_stale', 'non_theme_liquid_layout', 'theme_access_denied',
-        'shopify_cli_auth_failure', 'push_failed', 'out_of_scope', 'browser_automation_failure', 'other',
-    },
-    'escalated_to': {'swym_engineering', 'shopify_support', 'bigcommerce_support', 'none'},
-    'satisfaction': {'positive', 'neutral', 'negative'},
-    'feedback_reason': {
-        'incorrect_output', 'didnt_solve_issue', 'too_slow',
-        'unclear_explanation', 'other',
-    },
-}
+keys_json, enums_json = sys.argv[1:3]
+ALLOWED_KEYS = set(json.loads(keys_json))
+ENUMS = {k: set(v) for k, v in json.loads(enums_json).items()}
 # feedback_note is free text typed by an end user -- the one field here that
 # isn't a closed enum. This is a best-effort backstop, not a guarantee: drop
 # the whole note (rather than trying to redact in place) if it looks like it
@@ -110,7 +94,7 @@ EMAIL_DOMAIN_PATTERN = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?
 # all together as if they were one session. Drop the whole event instead.
 SESSION_ID_PATTERN = re.compile(r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$')
 
-event, token, install_id, skill_version, ts = sys.argv[1:6]
+event, token, install_id, skill_version, ts = sys.argv[3:8]
 fields = {
     'schema_version': 1,
     'skill': 'thememate',
@@ -120,7 +104,7 @@ fields = {
     'ts': ts,
     'token': token,
 }
-for pair in sys.argv[6:]:
+for pair in sys.argv[8:]:
     if '=' not in pair:
         continue
     k, v = pair.split('=', 1)
@@ -137,7 +121,7 @@ for pair in sys.argv[6:]:
         sys.exit(0)
     fields[k] = v
 print(json.dumps(fields))
-" "$EVENT" "$TOKEN" "$INSTALL_ID" "$SKILL_VERSION" "$TS" "$@" 2>/dev/null)
+" "$SCHEMA_KEYS_JSON" "$SCHEMA_ENUMS_JSON" "$EVENT" "$TOKEN" "$INSTALL_ID" "$SKILL_VERSION" "$TS" "$@" 2>/dev/null)
 
 [ -n "$PAYLOAD" ] || exit 0
 

@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "max_len": 128,
+  "accepted_keys": [
+    "session_id",
+    "role",
+    "mode",
+    "platform",
+    "outcome",
+    "failure_category",
+    "escalated_to",
+    "store_domain",
+    "lines_written",
+    "satisfaction",
+    "feedback_reason",
+    "feedback_note",
+    "git_org",
+    "git_repo",
+    "pr_url",
+    "preview_url",
+    "email_domain"
+  ],
+  "enums": {
+    "role": [
+      "swym_acq",
+      "swym_success",
+      "swym_support",
+      "swym_staff",
+      "agency",
+      "merchant",
+      "unknown"
+    ],
+    "mode": [
+      "KNOWLEDGE",
+      "THEME_INSPECT",
+      "THEME_EDIT"
+    ],
+    "platform": [
+      "shopify",
+      "bigcommerce",
+      "headless",
+      "unknown"
+    ],
+    "outcome": [
+      "completed",
+      "blocked",
+      "error",
+      "scope_rejected"
+    ],
+    "failure_category": [
+      "app_embed_hidden",
+      "css_specificity_conflict",
+      "snippet_removed_on_update",
+      "json_template_priority",
+      "callback_race_condition",
+      "zindex_stacking",
+      "hot_reload_stale",
+      "non_theme_liquid_layout",
+      "theme_access_denied",
+      "shopify_cli_auth_failure",
+      "push_failed",
+      "out_of_scope",
+      "browser_automation_failure",
+      "other"
+    ],
+    "escalated_to": [
+      "swym_engineering",
+      "shopify_support",
+      "bigcommerce_support",
+      "none"
+    ],
+    "satisfaction": [
+      "positive",
+      "neutral",
+      "negative"
+    ],
+    "feedback_reason": [
+      "incorrect_output",
+      "didnt_solve_issue",
+      "too_slow",
+      "unclear_explanation",
+      "other"
+    ]
+  },
+  "column_order": [
+    "received_at",
+    "event",
+    "ts",
+    "install_id",
+    "skill",
+    "skill_version",
+    "schema_version",
+    "session_id",
+    "role",
+    "mode",
+    "platform",
+    "outcome",
+    "failure_category",
+    "escalated_to",
+    "store_domain",
+    "lines_written",
+    "satisfaction",
+    "feedback_reason",
+    "feedback_note",
+    "git_org",
+    "git_repo",
+    "pr_url",
+    "preview_url",
+    "email_domain"
+  ]
+}

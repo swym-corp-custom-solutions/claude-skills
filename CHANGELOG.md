@@ -14,6 +14,24 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## Infrastructure
 
+### [telemetry-automation] 2026-07-24 — Schema-driven telemetry + Apps Script column migration
+
+**`telemetry/schema.json`** (new)
+- Single source of truth for telemetry accepted keys, enum constraints, and Google Sheet column order
+
+**`scripts/generate_telemetry_artifacts.py`** (new)
+- Generates schema blocks in `telemetry-emit.sh`
+- Generates `telemetry/apps-script/Code.gs` receiver from schema
+- Supports `--check` mode for CI drift detection
+
+**`telemetry/apps-script/Code.gs`** (new, generated)
+- Validates token (when script property `THEMEMATE_TOKEN` is set)
+- Auto-migrates missing header columns in row 1 on ingest
+- Appends rows by schema header mapping rather than fixed column index
+
+**CI**
+- Added `.github/workflows/telemetry-schema-check.yml` to enforce generated artifacts are up to date in PRs and on `main`
+
 ### [install] 2026-07-01 — Skill installer and auto-updater
 
 **`install.sh`**
