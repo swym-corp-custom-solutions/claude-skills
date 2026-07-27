@@ -58,4 +58,4 @@ Set it once in Apps Script:
 - Project Settings -> Script properties -> add key THEMEMATE_TOKEN
 - Value should match TOKEN in [telemetry-emit.sh](../telemetry-emit.sh)
 
-If THEMEMATE_TOKEN is not set, requests are accepted without token validation.
+**Always set THEMEMATE_TOKEN.** This is a public web app URL -- if THEMEMATE_TOKEN is left unset, the receiver accepts requests without any token validation at all. Leaving it unset is not recommended outside of local/manual testing.

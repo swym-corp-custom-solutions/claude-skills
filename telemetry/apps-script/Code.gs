@@ -204,6 +204,9 @@ function normalizePayload_(payload) {
   for (const key of accepted) {
     if (!(key in payload)) continue;
     const value = truncate_(payload[key], maxLen);
+    // Defense in depth: telemetry-emit.sh already scrubs these two free-text
+    // fields client-side, but the receiver shouldn't trust that a caller
+    // went through the emit script rather than posting directly.
     if ((key === 'feedback_note' || key === 'exit_summary') && (/@/.test(value) || /\d{7,}/.test(value))) continue;
     if (Object.prototype.hasOwnProperty.call(enums, key)) {
       if (!enums[key].includes(value)) continue;
