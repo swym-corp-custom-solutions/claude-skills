@@ -8,7 +8,7 @@ Claude Code skills for Swym staff (ACQ, Success, Support), agencies, and merchan
 
 | Skill | Invocation | Description |
 |-------|-----------|-------------|
-| [ThemeMate](skills/swym-thememate/) | `/thememate` | Implement and debug Swym features -- Wishlist Plus, Save For Later, Back In Stock, and more -- on Shopify, BigCommerce, and headless storefronts |
+| [ThemeMate](skills/swym-thememate/) | `/swym-thememate` | Implement and debug Swym features -- Wishlist Plus, Save For Later, Back In Stock, and more -- on Shopify, BigCommerce, and headless storefronts |
 
 ---
 
@@ -85,7 +85,7 @@ The installer does three things in one step:
 - Adds a Claude Code hook that auto-updates skills once per day
 
 **3. Verify**
-Start Claude Code and type `/thememate` — if the skill is installed correctly, Claude activates as ThemeMate.
+Start Claude Code and type `/swym-thememate` — if the skill is installed correctly, Claude activates as ThemeMate.
 
 ---
 
@@ -198,7 +198,7 @@ claude
 
 **2. Activate ThemeMate**
 ```
-/thememate
+/swym-thememate
 ```
 
 **3. Describe the request**
