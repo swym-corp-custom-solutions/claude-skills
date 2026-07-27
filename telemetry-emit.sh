@@ -19,7 +19,7 @@
 # Filled in during the one-time Google Sheet + Apps Script setup (see
 # CHANGELOG.md / README.md "Telemetry & privacy"). Not a secret boundary --
 # no PII ever travels through this endpoint.
-ENDPOINT_URL="https://script.google.com/macros/s/AKfycbzoweb5AaoAjyWvpinTYDcUmkzxZaMqYdtMAcnt6uH5usd3q_BlQox1pYlZNubIGQAr/exec"
+ENDPOINT_URL="https://script.google.com/macros/s/AKfycbwx-NhbUZmKukNpKAvGC2I5-CIqTCH1xKlcIIQDWuO4305CZAYCJx9auYtEoKqK262S/exec"
 TOKEN="1fdc121662ef8f7c74e17600771787e3"
 
 EVENT="$1"
@@ -53,8 +53,9 @@ SKILL_VERSION=$(grep -m1 "^  version:" "$HOME/.claude/skills/swym-thememate/SKIL
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)
 
 # BEGIN GENERATED TELEMETRY SCHEMA - DO NOT EDIT MANUALLY
-SCHEMA_KEYS_JSON='["session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain"]'
+SCHEMA_KEYS_JSON='["session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "turns", "session_duration_min", "exit_summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain"]'
 SCHEMA_ENUMS_JSON='{"role": ["swym_acq", "swym_success", "swym_support", "swym_staff", "agency", "merchant", "unknown"], "mode": ["KNOWLEDGE", "THEME_INSPECT", "THEME_EDIT"], "platform": ["shopify", "bigcommerce", "headless", "unknown"], "outcome": ["completed", "blocked", "error", "scope_rejected"], "failure_category": ["app_embed_hidden", "css_specificity_conflict", "snippet_removed_on_update", "json_template_priority", "callback_race_condition", "zindex_stacking", "hot_reload_stale", "non_theme_liquid_layout", "theme_access_denied", "shopify_cli_auth_failure", "push_failed", "out_of_scope", "browser_automation_failure", "other"], "escalated_to": ["swym_engineering", "shopify_support", "bigcommerce_support", "none"], "satisfaction": ["positive", "neutral", "negative"], "feedback_reason": ["incorrect_output", "didnt_solve_issue", "too_slow", "unclear_explanation", "other"]}'
+SCHEMA_MAX_LEN='128'
 # END GENERATED TELEMETRY SCHEMA
 
 # Remaining args are key=value pairs -- passed through argv so no
@@ -67,19 +68,21 @@ import json, sys
 
 import re
 
-MAX_LEN = 128
-keys_json, enums_json = sys.argv[1:3]
+keys_json, enums_json, max_len_str = sys.argv[1:4]
+MAX_LEN = int(max_len_str)
 ALLOWED_KEYS = set(json.loads(keys_json))
 ENUMS = {k: set(v) for k, v in json.loads(enums_json).items()}
-# feedback_note is free text typed by an end user -- the one field here that
-# isn't a closed enum. This is a best-effort backstop, not a guarantee: drop
-# the whole note (rather than trying to redact in place) if it looks like it
-# contains an email address (any '@' at all, including a partial local-part
-# with no domain yet typed) or a long digit run (phone/order number shaped).
+# feedback_note (user-typed) and exit_summary (LLM-written) are the two free
+# text fields here that aren't a closed enum. This is a best-effort backstop,
+# not a guarantee: drop the whole value (rather than trying to redact in
+# place) if it looks like it contains an email address (any '@' at all,
+# including a partial local-part with no domain yet typed) or a long digit
+# run (phone/order number shaped).
 PII_PATTERNS = (
     re.compile(r'@'),
     re.compile(r'\d{7,}'),
 )
+FREE_TEXT_KEYS = ('feedback_note', 'exit_summary')
 # email_domain must be a bare domain (e.g. 'acme.com'), never a full address --
 # this is the hard backstop behind the 'strip before @ and discard it' instruction
 # in SKILL.md, in case that step is ever skipped or done wrong.
@@ -94,7 +97,7 @@ EMAIL_DOMAIN_PATTERN = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?
 # all together as if they were one session. Drop the whole event instead.
 SESSION_ID_PATTERN = re.compile(r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$')
 
-event, token, install_id, skill_version, ts = sys.argv[3:8]
+event, token, install_id, skill_version, ts = sys.argv[4:9]
 fields = {
     'schema_version': 1,
     'skill': 'thememate',
@@ -104,7 +107,7 @@ fields = {
     'ts': ts,
     'token': token,
 }
-for pair in sys.argv[8:]:
+for pair in sys.argv[9:]:
     if '=' not in pair:
         continue
     k, v = pair.split('=', 1)
@@ -113,7 +116,7 @@ for pair in sys.argv[8:]:
     v = v[:MAX_LEN]
     if k in ENUMS and v not in ENUMS[k]:
         continue
-    if k == 'feedback_note' and any(p.search(v) for p in PII_PATTERNS):
+    if k in FREE_TEXT_KEYS and any(p.search(v) for p in PII_PATTERNS):
         continue
     if k == 'email_domain' and ('@' in v or not EMAIL_DOMAIN_PATTERN.match(v)):
         continue
@@ -121,7 +124,7 @@ for pair in sys.argv[8:]:
         sys.exit(0)
     fields[k] = v
 print(json.dumps(fields))
-" "$SCHEMA_KEYS_JSON" "$SCHEMA_ENUMS_JSON" "$EVENT" "$TOKEN" "$INSTALL_ID" "$SKILL_VERSION" "$TS" "$@" 2>/dev/null)
+" "$SCHEMA_KEYS_JSON" "$SCHEMA_ENUMS_JSON" "$SCHEMA_MAX_LEN" "$EVENT" "$TOKEN" "$INSTALL_ID" "$SKILL_VERSION" "$TS" "$@" 2>/dev/null)
 
 [ -n "$PAYLOAD" ] || exit 0
 

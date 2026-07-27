@@ -16,6 +16,9 @@ const TELEMETRY_SCHEMA = {
     "escalated_to",
     "store_domain",
     "lines_written",
+    "turns",
+    "session_duration_min",
+    "exit_summary",
     "satisfaction",
     "feedback_reason",
     "feedback_note",
@@ -104,6 +107,9 @@ const TELEMETRY_SCHEMA = {
     "escalated_to",
     "store_domain",
     "lines_written",
+    "turns",
+    "session_duration_min",
+    "exit_summary",
     "satisfaction",
     "feedback_reason",
     "feedback_note",
@@ -114,9 +120,18 @@ const TELEMETRY_SCHEMA = {
     "email_domain"
   ]
 };
-const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain"];
+const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "turns", "session_duration_min", "exit_summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain"];
 const SHEET_NAME = 'events';
 const TOKEN_PROPERTY_KEY = 'THEMEMATE_TOKEN';
+
+// The daily `heartbeat` event (skill-updater.sh) is a fixed, session-less
+// install ping -- a reach/adoption signal, not a ThemeMate session. It never
+// carries session_id or any of the richer session fields, so it gets its own
+// sheet with a fixed minimal shape instead of cluttering `events` with
+// mostly-blank rows and instead of evolving alongside schema.json's
+// session-oriented accepted_keys/column_order.
+const HEARTBEAT_SHEET_NAME = 'heartbeat';
+const HEARTBEAT_COLUMNS = ['received_at', 'ts', 'install_id', 'skill', 'skill_version'];
 
 function doPost(e) {
   try {
@@ -130,9 +145,17 @@ function doPost(e) {
     }
 
     const normalized = normalizePayload_(raw);
-    const sheet = getOrCreateSheet_();
-    ensureHeaders_(sheet, TELEMETRY_COLUMNS);
-    appendRow_(sheet, TELEMETRY_COLUMNS, normalized);
+
+    if (normalized.event === 'heartbeat') {
+      const sheet = getOrCreateSheet_(HEARTBEAT_SHEET_NAME);
+      const headers = ensureHeaders_(sheet, HEARTBEAT_COLUMNS);
+      appendRow_(sheet, headers, normalized);
+      return jsonResponse_(200, { ok: true });
+    }
+
+    const sheet = getOrCreateSheet_(SHEET_NAME);
+    const headers = ensureHeaders_(sheet, TELEMETRY_COLUMNS);
+    upsertRow_(sheet, headers, normalized);
 
     return jsonResponse_(200, { ok: true });
   } catch (err) {
@@ -163,7 +186,11 @@ function normalizePayload_(payload) {
     install_id: truncate_(payload.install_id, maxLen),
     skill: truncate_(payload.skill, maxLen),
     skill_version: truncate_(payload.skill_version, maxLen),
-    schema_version: truncate_(payload.schema_version, maxLen)
+    // Not read from the caller's payload -- a caller could otherwise write an
+    // arbitrary schema_version into the sheet. This receiver only ever
+    // understands its own embedded TELEMETRY_SCHEMA, so that's the only
+    // truthful value to record.
+    schema_version: TELEMETRY_SCHEMA.schema_version
   };
 
   for (const key of accepted) {
@@ -178,30 +205,68 @@ function normalizePayload_(payload) {
   return out;
 }
 
-function getOrCreateSheet_() {
+function getOrCreateSheet_(sheetName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
+  let sheet = ss.getSheetByName(sheetName);
+  if (!sheet) sheet = ss.insertSheet(sheetName);
   return sheet;
 }
 
 function ensureHeaders_(sheet, desiredHeaders) {
   const headerRow = 1;
   const lastCol = Math.max(1, sheet.getLastColumn());
-  const existingValues = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
-  const existingHeaders = existingValues.filter((v) => String(v || '').trim() !== '');
+  // Keep blanks in place -- every other function indexes into this array by
+  // physical column position (headers.indexOf(...), headers.map((h, i) =>
+  // ...)). Filtering them out here would desync those indices from the
+  // sheet's actual columns the moment row 1 has any gap.
+  const existingHeaders = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0];
+  const hasAnyHeader = existingHeaders.some((v) => String(v || '').trim() !== '');
 
-  if (existingHeaders.length === 0) {
+  if (!hasAnyHeader) {
     sheet.getRange(headerRow, 1, 1, desiredHeaders.length).setValues([desiredHeaders]);
+    return desiredHeaders.slice();
+  }
+
+  const existingSet = new Set(existingHeaders.map((v) => String(v || '')));
+  const missing = desiredHeaders.filter((h) => !existingSet.has(h));
+  if (missing.length === 0) return existingHeaders;
+
+  const startCol = lastCol + 1;
+  sheet.getRange(headerRow, startCol, 1, missing.length).setValues([missing]);
+  return existingHeaders.concat(missing);
+}
+
+function upsertRow_(sheet, headers, payload) {
+  const sessionCol = headers.indexOf('session_id');
+  const existingRow = (sessionCol === -1 || !payload.session_id)
+    ? -1
+    : findRowBySessionId_(sheet, sessionCol, payload.session_id);
+
+  if (existingRow === -1) {
+    appendRow_(sheet, headers, payload);
     return;
   }
 
-  const existingSet = new Set(existingHeaders);
-  const missing = desiredHeaders.filter((h) => !existingSet.has(h));
-  if (missing.length === 0) return;
+  // Merge onto the existing row: only overwrite columns present on this event's
+  // payload (e.g. a session_heartbeat's turns/session_duration_min), leave every
+  // other column -- role, store_domain, git_org, etc. set by an earlier event in
+  // the same session -- untouched rather than blanked out.
+  const lastCol = headers.length;
+  const currentValues = sheet.getRange(existingRow, 1, 1, lastCol).getValues()[0];
+  const merged = headers.map((h, i) => (
+    Object.prototype.hasOwnProperty.call(payload, h) ? payload[h] : currentValues[i]
+  ));
+  sheet.getRange(existingRow, 1, 1, lastCol).setValues([merged]);
+}
 
-  const startCol = existingHeaders.length + 1;
-  sheet.getRange(headerRow, startCol, 1, missing.length).setValues([missing]);
+function findRowBySessionId_(sheet, sessionCol, sessionId) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  const values = sheet.getRange(2, sessionCol + 1, lastRow - 1, 1).getValues();
+  for (let i = values.length - 1; i >= 0; i--) {
+    if (values[i][0] === sessionId) return i + 2;
+  }
+  return -1;
 }
 
 function appendRow_(sheet, headers, payload) {
@@ -215,7 +280,11 @@ function truncate_(value, maxLen) {
 }
 
 function jsonResponse_(status, obj) {
-  const output = ContentService.createTextOutput(JSON.stringify(obj));
+  // Apps Script web app responses are always HTTP 200 regardless of this
+  // value (ContentService has no way to set the real status code) -- fold
+  // it into the body so callers can still tell success from failure.
+  const body = Object.assign({ status: status }, obj);
+  const output = ContentService.createTextOutput(JSON.stringify(body));
   output.setMimeType(ContentService.MimeType.JSON);
   return output;
 }
