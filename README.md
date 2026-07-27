@@ -8,13 +8,13 @@ Claude Code skills for Swym staff (ACQ, Success, Support), agencies, and merchan
 
 | Skill | Invocation | Description |
 |-------|-----------|-------------|
-| [ThemeMate](skills/swym-thememate/) | `/thememate` | Implement and debug Swym Wishlist UI on Shopify, BigCommerce, and headless storefronts |
+| [ThemeMate](skills/swym-thememate/) | `/swym-thememate` | Implement and debug Swym features -- Wishlist Plus, Save For Later, Back In Stock, and more -- on Shopify, BigCommerce, and headless storefronts |
 
 ---
 
 ## ThemeMate
 
-ThemeMate turns Claude Code into an expert theme assistant for Swym across Shopify, BigCommerce, and headless storefronts. You describe what needs to change and ThemeMate handles the full workflow: pulling the theme, exploring files, implementing the change, running local browser validation, and opening a PR for review.
+ThemeMate turns Claude Code into an expert theme assistant for Swym's product suite -- Wishlist Plus, Save For Later, Back In Stock, and Recently Viewed -- plus custom patterns built on top of them like B2B List (not a separately-licensed product), across Shopify, BigCommerce, and headless storefronts. You describe what needs to change and ThemeMate handles the workflow end to end for whichever platform you're on: for Shopify theme work, that's pulling the theme, implementing the change, validating it in a local browser, and opening a PR for review; BigCommerce and headless follow a different path (see Platform routing below).
 
 **Platform routing:** Shopify uses the Shopify CLI. BigCommerce delivers code via Script Manager paste instructions. Headless uses the Swym REST API. ThemeMate picks the right path automatically based on the storefront type.
 
@@ -55,22 +55,12 @@ Swym staff need access to the `swym-corp-custom-solutions` org. Agencies use the
 **5. Shopify Partner Portal access** _(Shopify storefronts only)_
 ThemeMate pulls themes via the Shopify CLI, which requires collaborator or staff access on the merchant store. Confirm you can log in to `partners.shopify.com` and see the merchant store under Stores. Not required for BigCommerce or headless sessions.
 
-**6. Chrome with remote debugging (for browser validation)**
-ThemeMate validates features by connecting to your existing authenticated Chrome window. Before starting a session, launch Chrome with the remote debugging port open:
+**6. Chrome (for browser validation)**
+ThemeMate validates features with Playwright, connecting over a dedicated Chrome automation profile -- **never your regular daily-driver Chrome window** (Chrome blocks remote debugging on the default profile directory anyway). If you're running Claude Code with terminal access, ThemeMate sets this up itself at session start: a separate profile directory, a Chrome instance launched against it, and the Playwright MCP config pointed at it -- nothing to do beforehand except have Chrome installed. The first time a session needs Partner Portal, Shopify admin, or a password-protected storefront, you'll be asked to log in once in that dedicated window; the session persists after that.
 
-```bash
-# macOS
-open -a "Google Chrome" --args --remote-debugging-port=9222
+See [Section 6, BROWSER SETUP](skills/swym-thememate/SKILL.md#6-browser-setup) for the full setup mechanism and troubleshooting.
 
-# Linux
-google-chrome --remote-debugging-port=9222
-```
-
-> **Windows (Git Bash / WSL):** `start chrome --remote-debugging-port=9222`
-
-If Chrome is already running without this flag, quit it and relaunch with the command above.
-
-Without it, ThemeMate falls back to asking you to confirm the preview manually in your browser.
+If terminal execution isn't available in your environment, ThemeMate falls back to asking you to confirm the preview manually in your own browser.
 
 ---
 
@@ -95,7 +85,7 @@ The installer does three things in one step:
 - Adds a Claude Code hook that auto-updates skills once per day
 
 **3. Verify**
-Start Claude Code and type `/thememate` — if the skill is installed correctly, Claude activates as ThemeMate.
+Start Claude Code and type `/swym-thememate` — if the skill is installed correctly, Claude activates as ThemeMate.
 
 ---
 
@@ -158,15 +148,17 @@ cp skills/swym-thememate/versions/SKILL-1.0.0.md \
    ~/.claude/skills/swym-thememate/SKILL.md
 ```
 
+**Note:** older archived versions predate the skill's rename and have a different `name:` field in their frontmatter (e.g. `SKILL-2.2.0.md` and earlier say `name: thememate`, not `name: swym-thememate`). If a rollback that far back leaves `/swym-thememate` not activating the skill, check the archived file's `name:` field and use `/thememate` instead.
+
 ---
 
 ### Telemetry & Privacy
 
 `install.sh` also installs `telemetry-emit.sh` to `~/.claude/telemetry-emit.sh`. ThemeMate uses it to report anonymous, best-effort usage events so Swym can see adoption and reliability trends and improve the skill where it's weakest.
 
-**What's collected:** role, mode, storefront platform, session outcome, failure category, timing, skill version, the store domain/slug, the GitHub org/repo the session used (`git_org` doubles as the agency identifier for agency sessions -- there's no separate agency-name field), the email *domain* (never the address) read opportunistically from already-configured `gh`/`git` identity as a secondary org/agency signal, the PR URL and preview URL the session produced, lines of theme code written per session, a closed-enum satisfaction rating (positive/neutral/negative) with an optional one-line free-text comment on negative ratings, and a stable anonymous per-machine `install_id` (a UUID generated on first use, stored at `~/.claude/.thememate-install-id`). **Never customer PII, never merchant customer data, never a full email address, never solicited from the user.** The free-text comment is opt-in per session (ThemeMate warns before asking for it) and `telemetry-emit.sh` itself drops any comment that still looks like it contains an email address or a long digit run (e.g. an order number); the email-domain field is rejected outright if it contains `@` or isn't shaped like a bare domain.
+**What's collected:** role, mode, storefront platform, session outcome, failure category (including feature-specific categories for Save For Later / Back In Stock), timing (turn count and elapsed session duration), skill version, the store domain/slug, the GitHub org/repo the session used (`git_org` doubles as the agency identifier for agency sessions -- there's no separate agency-name field), the email *domain* (never the address) read opportunistically from already-configured `gh`/`git` identity as a secondary org/agency signal, the PR URL and preview URL the session produced, lines of theme code written per session, a short exit summary describing what happened, a closed-enum satisfaction rating (positive/neutral/negative) with an optional one-line free-text comment on negative ratings, and a stable anonymous per-machine `install_id` (a UUID generated on first use, stored at `~/.claude/.thememate-install-id`). **Never customer PII, never merchant customer data, never a full email address, never solicited from the user.** The exit summary and free-text feedback comment are the two fields carrying real risk of pasting or writing in personal details -- `telemetry-emit.sh` drops either outright if it still looks like it contains an email address or a long digit run (e.g. an order number); the email-domain field is rejected outright if it contains `@` or isn't shaped like a bare domain.
 
-**How it's collected:** a daily heartbeat (from `skill-updater.sh`, works even without `gh` CLI) plus `session_start`/`session_end`/`feedback` events self-reported by ThemeMate at natural session-ending points (DIAGNOSTIC_SUMMARY, PR creation, HANDOFF) or when a delivered fix turns out not to work. See Section 14 of `SKILL.md` for the full mechanism.
+**How it's collected:** a daily install heartbeat (from `skill-updater.sh`, works even without `gh` CLI, written to its own sheet/tab) plus `session_start` / a periodic `session_heartbeat` (every 5 user turns, so long-running or abandoned sessions still leave partial data) / `session_end` / `feedback` events self-reported by ThemeMate -- `session_end` fires at natural session-ending points (DIAGNOSTIC_SUMMARY, PR creation, HANDOFF, or any point ThemeMate cannot continue). `feedback` is asked once per session at that same point, except when a delivered fix turns out not to work -- that fires an immediate negative `feedback` event mid-session instead of waiting for session end. On the receiving end, events sharing a `session_id` are merged into one row per session rather than one row per event, and the daily heartbeat writes to its own sheet/tab separate from session events -- see [telemetry/README.md](telemetry/README.md) for the receiver-side mechanics. See [Section 14, TELEMETRY](skills/swym-thememate/SKILL.md#14-telemetry) of `SKILL.md` for what ThemeMate itself emits and when.
 
 **Opt out:**
 - One install: `rm ~/.claude/telemetry-emit.sh`. Both call sites treat a missing file as a silent no-op -- nothing else changes. Note this only lasts until the next `install.sh` run, which re-copies the file.
@@ -208,7 +200,7 @@ claude
 
 **2. Activate ThemeMate**
 ```
-/thememate
+/swym-thememate
 ```
 
 **3. Describe the request**
@@ -219,10 +211,12 @@ ThemeMate asks about your role once (ACQ, Success, Support, agency, or merchant)
 - "Implement wishlisting on collection cards for merchantstore.com"
 - "Replace the default Swym heart button with a custom Add to Wishlist CTA"
 - "Build a headless wishlist using the REST API for this Next.js storefront"
+- "Add a Back In Stock notify-me form to the PDP for merchantstore.com"
 
 **Success / onboarding:**
 - "We're onboarding merchantstore.com -- audit what Swym features are active and what's missing"
 - "Prepare a demo of wishlist on collection and PDP for a prospect pitch"
+- "Check whether Save For Later is working correctly on the cart page"
 
 **Support / diagnostics:**
 - "The wishlist button isn't appearing on the PDP for merchantstore.com -- help me debug"
