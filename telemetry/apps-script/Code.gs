@@ -169,7 +169,11 @@ function doPost(e) {
 
 function parseBody_(e) {
   if (!e || !e.postData || !e.postData.contents) return null;
-  return JSON.parse(e.postData.contents);
+  try {
+    return JSON.parse(e.postData.contents);
+  } catch (err) {
+    return null;
+  }
 }
 
 function isAuthorized_(payload) {
