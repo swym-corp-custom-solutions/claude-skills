@@ -14,7 +14,7 @@ Claude Code skills for Swym staff (ACQ, Success, Support), agencies, and merchan
 
 ## ThemeMate
 
-ThemeMate turns Claude Code into an expert theme assistant for Swym's product suite -- Wishlist Plus, Save For Later, Back In Stock, Recently Viewed, and B2B List -- across Shopify, BigCommerce, and headless storefronts. You describe what needs to change and ThemeMate handles the workflow end to end for whichever platform you're on: for Shopify theme work, that's pulling the theme, implementing the change, validating it in a local browser, and opening a PR for review; BigCommerce and headless follow a different path (see Platform routing below).
+ThemeMate turns Claude Code into an expert theme assistant for Swym's product suite -- Wishlist Plus, Save For Later, Back In Stock, and Recently Viewed -- plus custom patterns built on top of them like B2B List (not a separately-licensed product), across Shopify, BigCommerce, and headless storefronts. You describe what needs to change and ThemeMate handles the workflow end to end for whichever platform you're on: for Shopify theme work, that's pulling the theme, implementing the change, validating it in a local browser, and opening a PR for review; BigCommerce and headless follow a different path (see Platform routing below).
 
 **Platform routing:** Shopify uses the Shopify CLI. BigCommerce delivers code via Script Manager paste instructions. Headless uses the Swym REST API. ThemeMate picks the right path automatically based on the storefront type.
 
