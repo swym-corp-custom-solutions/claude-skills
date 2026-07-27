@@ -58,7 +58,7 @@ ThemeMate pulls themes via the Shopify CLI, which requires collaborator or staff
 **6. Chrome (for browser validation)**
 ThemeMate validates features with Playwright, connecting over a dedicated Chrome automation profile -- **never your regular daily-driver Chrome window** (Chrome blocks remote debugging on the default profile directory anyway). If you're running Claude Code with terminal access, ThemeMate sets this up itself at session start: a separate profile directory, a Chrome instance launched against it, and the Playwright MCP config pointed at it -- nothing to do beforehand except have Chrome installed. The first time a session needs Partner Portal, Shopify admin, or a password-protected storefront, you'll be asked to log in once in that dedicated window; the session persists after that.
 
-See Section 6 of `SKILL.md` for the full setup mechanism and troubleshooting.
+See Section 6 of [skills/swym-thememate/SKILL.md](skills/swym-thememate/SKILL.md#6-browser-setup) for the full setup mechanism and troubleshooting.
 
 If terminal execution isn't available in your environment, ThemeMate falls back to asking you to confirm the preview manually in your own browser.
 
