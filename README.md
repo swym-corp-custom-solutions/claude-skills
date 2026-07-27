@@ -174,6 +174,25 @@ cp skills/swym-thememate/versions/SKILL-1.0.0.md \
 
 **Testing the telemetry pipe itself:** `touch ~/.claude/.thememate-telemetry-debug` before firing manual test events (e.g. verifying a Sheet/Apps Script change). `telemetry-emit.sh` prefixes `install_id` with `debug-` while that marker exists, so test rows can be filtered out of real usage reporting with one condition instead of hunting them down by hand. `rm` the marker when done.
 
+#### Telemetry schema automation (for new metrics/columns)
+
+Telemetry keys, enums, and sheet column order are now schema-driven so future metric additions are one change in one file.
+
+1. Edit `telemetry/schema.json`
+2. Regenerate artifacts:
+   ```bash
+   python3 scripts/generate_telemetry_artifacts.py
+   ```
+3. Commit the schema and generated files
+
+Generated artifacts:
+- `telemetry-emit.sh` (allowed keys/enums block)
+- `telemetry/apps-script/Code.gs` (receiver + auto header migration)
+
+CI validates this via `.github/workflows/telemetry-schema-check.yml` and fails if generated artifacts are stale.
+
+See `telemetry/README.md` for Apps Script setup and deployment options.
+
 ---
 
 ### How to Use

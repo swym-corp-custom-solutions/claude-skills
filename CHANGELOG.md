@@ -14,6 +14,54 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## Infrastructure
 
+### [telemetry-automation] 2026-07-27 — Sync failure_category enum, avoid full-column scans
+
+**`telemetry/schema.json`**
+- `failure_category` enum was missing four values SKILL.md already instructs ThemeMate to emit (`sfl_cart_toggle_disabled`, `bis_stale_variant_binding`, `bis_custom_webhook_unreachable`, `unsupported_feature_requested`) -- `telemetry-emit.sh`'s enum check was silently dropping them from outgoing events. Added to bring schema.json back in sync with the documented contract.
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- `findRowBySessionId_` no longer pulls the entire `session_id` column into the script runtime via `getValues()` -- uses `Range.createTextFinder(...).matchEntireCell(true).findAll()` instead, keeping the scan server-side as the sheet grows
+
+### [telemetry-automation] 2026-07-25 — Route the daily heartbeat ping to its own sheet
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- The daily `heartbeat` event (`skill-updater.sh`, no `session_id`, no session fields) now writes to a separate `heartbeat` sheet/tab with a fixed minimal column set (`received_at`, `ts`, `install_id`, `skill`, `skill_version`), instead of appending mostly-blank rows into `events` alongside real session data
+- `getOrCreateSheet_` now takes a sheet name parameter instead of always opening `events`
+- Verified with the mock-Sheet harness: `heartbeat` events land in their own sheet with only the minimal columns populated; session events still upsert into `events` as before
+
+### [telemetry-automation] 2026-07-25 — One row per session_id (upsert) instead of one row per event
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- `doPost` now calls new `upsertRow_` instead of always `appendRow_`: if the incoming event's `session_id` already has a row in the sheet, its fields are merged onto that row in place (`event`/`received_at`/`ts` reflect the latest event; every other column keeps its prior value unless this event's payload also sets it) -- `session_start` -> `session_heartbeat` -> `session_end` for one session now collapse into a single row instead of three
+- Events with no `session_id` (e.g. the `heartbeat` event `skill-updater.sh` sends daily, or a malformed/missing session_id that the emit script itself normally drops before it reaches here) still always append a new row -- there's nothing to key an upsert on
+- New helper `findRowBySessionId_` scans the `session_id` column for the most recent matching row
+- Verified with a local mock-Sheet harness: 3 events sharing one `session_id` collapsed to 1 row with fields merged as expected; a second, different `session_id` correctly stayed on its own row
+
+### [telemetry-automation] 2026-07-25 — Fix column misalignment when new schema columns insert mid-list
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- Bug: `ensureHeaders_` appends any new column to the physical end of row 1, but `doPost` was writing each row's values by walking the canonical `TELEMETRY_COLUMNS` order from `schema.json` instead of the sheet's actual header order. Adding a new key anywhere but the very end of `column_order` (as done when `turns`/`session_duration_min`/`exit_summary` were added) silently shifted every value from that column onward into the wrong header for every row written since
+- Fix: `ensureHeaders_` now returns the sheet's true physical header order (existing headers + any newly appended ones), and `doPost` passes that into `appendRow_` instead of the canonical schema list -- values are now written by actual header name/position, matching what the code was already documented (but not actually implemented) to do
+- Existing rows written before this fix remain misaligned in the Sheet; only rows written after redeploying this fix are correct
+
+### [telemetry-automation] 2026-07-24 — Schema-driven telemetry + Apps Script column migration
+
+**`telemetry/schema.json`** (new)
+- Single source of truth for telemetry accepted keys, enum constraints, and Google Sheet column order
+
+**`scripts/generate_telemetry_artifacts.py`** (new)
+- Generates schema blocks in `telemetry-emit.sh`
+- Generates `telemetry/apps-script/Code.gs` receiver from schema
+- Supports `--check` mode for CI drift detection
+
+**`telemetry/apps-script/Code.gs`** (new, generated)
+- Validates token (when script property `THEMEMATE_TOKEN` is set)
+- Auto-migrates missing header columns in row 1 on ingest
+- Appends rows by schema header mapping rather than fixed column index
+
+**CI**
+- Added `.github/workflows/telemetry-schema-check.yml` to enforce generated artifacts are up to date in PRs and on `main`
+
 ### [install] 2026-07-01 — Skill installer and auto-updater
 
 **`install.sh`**
@@ -41,6 +89,19 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 ---
 
 ## ThemeMate
+
+### [2.8.0] 2026-07-24: Turns, session duration, and exit summary telemetry
+
+Current version.
+
+**Section 14 -- TELEMETRY**
+- New running counters tracked from `session_start` onward: `turns` (running count of user messages) and `session_duration_min` (elapsed minutes since `session_start`, computed from `$(date +%s)`)
+- New `session_heartbeat` event: fires every 5 user turns so a long-running or abandoned session still leaves partial data even when `session_end` never fires
+- `session_end` now always includes `turns`/`session_duration_min`, and optionally `exit_summary` -- a short LLM-written one-line summary of what happened this session, sharing `feedback_note`'s PII backstop (the emit script drops the field if it looks like it contains an email or long digit run)
+
+**`telemetry-emit.sh`**
+- New allowed keys: `turns`, `session_duration_min`, `exit_summary`
+- The existing `feedback_note` PII backstop (drop on email-shaped or long-digit-run content) now also applies to `exit_summary`
 
 ### [2.3.0] 2026-07-07: Defer GitHub repo/PR creation until after preview confirmation
 
