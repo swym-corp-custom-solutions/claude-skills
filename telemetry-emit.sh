@@ -123,6 +123,14 @@ for pair in sys.argv[10:]:
         continue
     if k == 'session_id' and not SESSION_ID_PATTERN.match(v):
         sys.exit(0)
+    # An accidental empty value (e.g. a caller passing key= with nothing
+    # after it) would otherwise still land in fields and, downstream, count
+    # as present on this event for the receiver's upsert merge -- blanking a
+    # column a prior event in the same session had already set. session_id
+    # is exempted above (empty already hard-fails the whole event, doesn't
+    # fall through to here).
+    if not v:
+        continue
     fields[k] = v
 print(json.dumps(fields))
 " "$SCHEMA_KEYS_JSON" "$SCHEMA_ENUMS_JSON" "$SCHEMA_MAX_LEN" "$SCHEMA_VERSION" "$EVENT" "$TOKEN" "$INSTALL_ID" "$SKILL_VERSION" "$TS" "$@" 2>/dev/null)

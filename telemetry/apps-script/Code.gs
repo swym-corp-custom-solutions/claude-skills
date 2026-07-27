@@ -204,6 +204,11 @@ function normalizePayload_(payload) {
   for (const key of accepted) {
     if (!(key in payload)) continue;
     const value = truncate_(payload[key], maxLen);
+    // An empty value must not be treated as "present on this event" --
+    // upsertRow_ merges by property presence on this normalized object, so
+    // setting out[key] to '' here would blank a column a prior event in the
+    // same session already populated.
+    if (!value) continue;
     // Defense in depth: telemetry-emit.sh already scrubs these two free-text
     // fields client-side, but the receiver shouldn't trust that a caller
     // went through the emit script rather than posting directly.
