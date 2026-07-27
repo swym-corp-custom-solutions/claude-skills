@@ -204,6 +204,7 @@ function normalizePayload_(payload) {
   for (const key of accepted) {
     if (!(key in payload)) continue;
     const value = truncate_(payload[key], maxLen);
+    if ((key === 'feedback_note' || key === 'exit_summary') && (/@/.test(value) || /\d{7,}/.test(value))) continue;
     if (Object.prototype.hasOwnProperty.call(enums, key)) {
       if (!enums[key].includes(value)) continue;
     }
