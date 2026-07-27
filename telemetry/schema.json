@@ -64,6 +64,10 @@
       "push_failed",
       "out_of_scope",
       "browser_automation_failure",
+      "sfl_cart_toggle_disabled",
+      "bis_stale_variant_binding",
+      "bis_custom_webhook_unreachable",
+      "unsupported_feature_requested",
       "other"
     ],
     "escalated_to": [

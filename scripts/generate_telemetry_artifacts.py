@@ -260,11 +260,13 @@ function upsertRow_(sheet, headers, payload) {{
 function findRowBySessionId_(sheet, sessionCol, sessionId) {{
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
-  const values = sheet.getRange(2, sessionCol + 1, lastRow - 1, 1).getValues();
-  for (let i = values.length - 1; i >= 0; i--) {{
-    if (values[i][0] === sessionId) return i + 2;
-  }}
-  return -1;
+  // TextFinder keeps the scan server-side instead of pulling the whole
+  // session_id column into the script runtime with getValues() -- matters
+  // once the sheet has a real number of rows.
+  const range = sheet.getRange(2, sessionCol + 1, lastRow - 1, 1);
+  const matches = range.createTextFinder(sessionId).matchEntireCell(true).findAll();
+  if (matches.length === 0) return -1;
+  return matches[matches.length - 1].getRow();
 }}
 
 function appendRow_(sheet, headers, payload) {{

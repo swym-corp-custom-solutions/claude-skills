@@ -14,6 +14,14 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## Infrastructure
 
+### [telemetry-automation] 2026-07-27 — Sync failure_category enum, avoid full-column scans
+
+**`telemetry/schema.json`**
+- `failure_category` enum was missing four values SKILL.md already instructs ThemeMate to emit (`sfl_cart_toggle_disabled`, `bis_stale_variant_binding`, `bis_custom_webhook_unreachable`, `unsupported_feature_requested`) -- `telemetry-emit.sh`'s enum check was silently dropping them from outgoing events. Added to bring schema.json back in sync with the documented contract.
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- `findRowBySessionId_` no longer pulls the entire `session_id` column into the script runtime via `getValues()` -- uses `Range.createTextFinder(...).matchEntireCell(true).findAll()` instead, keeping the scan server-side as the sheet grows
+
 ### [telemetry-automation] 2026-07-25 — Route the daily heartbeat ping to its own sheet
 
 **`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
