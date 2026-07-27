@@ -148,6 +148,8 @@ cp skills/swym-thememate/versions/SKILL-1.0.0.md \
    ~/.claude/skills/swym-thememate/SKILL.md
 ```
 
+**Note:** older archived versions predate the skill's rename and have a different `name:` field in their frontmatter (e.g. `SKILL-2.2.0.md` and earlier say `name: thememate`, not `name: swym-thememate`). If a rollback that far back leaves `/swym-thememate` not activating the skill, check the archived file's `name:` field and use `/thememate` instead.
+
 ---
 
 ### Telemetry & Privacy
