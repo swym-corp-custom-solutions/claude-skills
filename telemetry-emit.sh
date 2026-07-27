@@ -56,6 +56,7 @@ TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)
 SCHEMA_KEYS_JSON='["session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "turns", "session_duration_min", "exit_summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain"]'
 SCHEMA_ENUMS_JSON='{"role": ["swym_acq", "swym_success", "swym_support", "swym_staff", "agency", "merchant", "unknown"], "mode": ["KNOWLEDGE", "THEME_INSPECT", "THEME_EDIT"], "platform": ["shopify", "bigcommerce", "headless", "unknown"], "outcome": ["completed", "blocked", "error", "scope_rejected"], "failure_category": ["app_embed_hidden", "css_specificity_conflict", "snippet_removed_on_update", "json_template_priority", "callback_race_condition", "zindex_stacking", "hot_reload_stale", "non_theme_liquid_layout", "theme_access_denied", "shopify_cli_auth_failure", "push_failed", "out_of_scope", "browser_automation_failure", "sfl_cart_toggle_disabled", "bis_stale_variant_binding", "bis_custom_webhook_unreachable", "unsupported_feature_requested", "other"], "escalated_to": ["swym_engineering", "shopify_support", "bigcommerce_support", "none"], "satisfaction": ["positive", "neutral", "negative"], "feedback_reason": ["incorrect_output", "didnt_solve_issue", "too_slow", "unclear_explanation", "other"]}'
 SCHEMA_MAX_LEN='128'
+SCHEMA_VERSION='1'
 # END GENERATED TELEMETRY SCHEMA
 
 # Remaining args are key=value pairs -- passed through argv so no
@@ -68,7 +69,7 @@ import json, sys
 
 import re
 
-keys_json, enums_json, max_len_str = sys.argv[1:4]
+keys_json, enums_json, max_len_str, schema_version_str = sys.argv[1:5]
 MAX_LEN = int(max_len_str)
 ALLOWED_KEYS = set(json.loads(keys_json))
 ENUMS = {k: set(v) for k, v in json.loads(enums_json).items()}
@@ -97,9 +98,9 @@ EMAIL_DOMAIN_PATTERN = re.compile(r'^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?
 # all together as if they were one session. Drop the whole event instead.
 SESSION_ID_PATTERN = re.compile(r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$')
 
-event, token, install_id, skill_version, ts = sys.argv[4:9]
+event, token, install_id, skill_version, ts = sys.argv[5:10]
 fields = {
-    'schema_version': 1,
+    'schema_version': int(schema_version_str),
     'skill': 'thememate',
     'skill_version': skill_version[:MAX_LEN],
     'install_id': install_id[:MAX_LEN],
@@ -107,7 +108,7 @@ fields = {
     'ts': ts,
     'token': token,
 }
-for pair in sys.argv[9:]:
+for pair in sys.argv[10:]:
     if '=' not in pair:
         continue
     k, v = pair.split('=', 1)
@@ -124,7 +125,7 @@ for pair in sys.argv[9:]:
         sys.exit(0)
     fields[k] = v
 print(json.dumps(fields))
-" "$SCHEMA_KEYS_JSON" "$SCHEMA_ENUMS_JSON" "$SCHEMA_MAX_LEN" "$EVENT" "$TOKEN" "$INSTALL_ID" "$SKILL_VERSION" "$TS" "$@" 2>/dev/null)
+" "$SCHEMA_KEYS_JSON" "$SCHEMA_ENUMS_JSON" "$SCHEMA_MAX_LEN" "$SCHEMA_VERSION" "$EVENT" "$TOKEN" "$INSTALL_ID" "$SKILL_VERSION" "$TS" "$@" 2>/dev/null)
 
 [ -n "$PAYLOAD" ] || exit 0
 

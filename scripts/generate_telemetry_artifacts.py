@@ -92,6 +92,7 @@ def render_emitter_block(schema: dict) -> str:
             f"SCHEMA_KEYS_JSON='{keys_json}'",
             f"SCHEMA_ENUMS_JSON='{enums_json}'",
             f"SCHEMA_MAX_LEN='{int(schema['max_len'])}'",
+            f"SCHEMA_VERSION='{int(schema['schema_version'])}'",
             EMITTER_END,
         ]
     )
