@@ -8,7 +8,7 @@ description: >
   integrations via the Swym REST API. Uses Shopify CLI for Shopify
   storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.13.0
+  version: 2.12.0
   last_updated: 2026-08-05
 ---
 
@@ -2043,41 +2043,14 @@ Also add `platform=<shopify|bigcommerce|headless>` to this same call if already 
 **Running counters** -- tracked from `session_start` onward, reported on every `session_heartbeat` and on `session_end`:
 - `turns` -- increment by 1 each time you receive a new user message this session. Plain count, not an estimate.
 - `session_duration_min` -- elapsed minutes since `session_start`: `echo $(( ($(date +%s) - {session_start_epoch}) / 60 ))`.
-- `tokens` -- best-effort, exact only when resolvable, never estimated. Only attempt this if you have Bash/terminal access and are running inside Claude Code (the CLI) -- Claude Desktop and other hosts have no equivalent readable transcript, so omit the field there rather than guessing. Get this session's own UUID from context already available to you (e.g. the "Scratchpad Directory" path in your system reminders, shaped `.../<sanitized-project-cwd>/<session-id>/scratchpad`) -- never try to discover it by listing the projects directory, since it holds many other sessions' transcripts side by side with no way to tell which is this one's from the listing alone. Then sum this session's transcript, **deduped by `requestId`**: a single API call is frequently split across multiple `assistant`-type JSONL lines (one per content block -- text, tool_use, etc.), each carrying an identical copy of that call's `usage` -- summing every line instead of every unique request silently double- or triple-counts the same call:
-  ```bash
-  python3 -c "
-  import json
-  by_request = {}
-  try:
-      with open('$HOME/.claude/projects/<sanitized-project-cwd>/<session-id>.jsonl') as f:
-          for line in f:
-              try:
-                  d = json.loads(line)
-              except Exception:
-                  continue
-              if d.get('type') != 'assistant':
-                  continue
-              rid = d.get('requestId')
-              if not rid:
-                  continue
-              by_request[rid] = (d.get('message') or {}).get('usage') or {}
-  except FileNotFoundError:
-      pass
-  total = 0
-  for u in by_request.values():
-      total += int(u.get('input_tokens') or 0) + int(u.get('output_tokens') or 0) + int(u.get('cache_creation_input_tokens') or 0) + int(u.get('cache_read_input_tokens') or 0)
-  print(total)
-  "
-  ```
-  `<sanitized-project-cwd>` is the project root's absolute path with every `/` replaced by `-` (e.g. `/Users/x/y` -> `-Users-x-y`). Recompute fresh on every `session_heartbeat`/`session_end` rather than tracking a running delta -- the transcript already holds the full history, re-summing it is cheap. If the scratchpad path isn't present in this session, or the transcript file can't be found or read, omit `tokens` entirely for that event -- don't estimate it from message length or any other proxy.
 
 **`session_heartbeat`** -- fire after the first user turn's response, then every 5 user turns after that (i.e. whenever `{turns}` is 1 or a multiple of 5), and any other time the running `summary` changes meaningfully (e.g. root cause identified, fix applied, PR pushed) -- so a long-running or abandoned session still leaves a usable summary even if `session_end` never fires or omits it:
 ```bash
-bash ~/.claude/telemetry-emit.sh session_heartbeat session_id=<same uuid from session_start> role=<role> mode=<current MODE> turns=<n> session_duration_min=<n> tokens=<n, if resolved> summary="<best current one-line status>"
+bash ~/.claude/telemetry-emit.sh session_heartbeat session_id=<same uuid from session_start> role=<role> mode=<current MODE> turns=<n> session_duration_min=<n> summary="<best current one-line status>"
 ```
 Same PII backstop as the `session_end` `summary` below -- never include a customer name, email, order number, or other personal detail. `email_domain`/`account_name`/`feature`/`usecase` don't need repeating here -- they were already set on `session_start` and carry forward via the sheet's upsert-merge.
 
-**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, KNOWLEDGE mode's answer when the user doesn't continue into THEME_EDIT, or any point ThemeMate cannot continue). Always include `role=<role>` -- it's known for the full session (Section 2) and is the main way completed/blocked/error outcomes get sliced by who ran the session. Always include `turns` and `session_duration_min` too -- the running counters above are tracked for every session regardless of mode. Include `tokens` alongside them whenever it resolved (Bash + Claude Code transcript access) -- best-effort, so omit rather than guess when it didn't. Always include `summary` (finalized -- what actually happened, refining or replacing the initial value set at `session_start`) and `usecase_met` (`yes`/`no` -- your own judgment of whether what happened actually satisfies the `usecase` captured at `session_start`; distinct from `outcome` below, which tracks whether the session reached a definitive completion state, not whether the original intent was met). Always include `store_domain` too when BRAND_DISCOVER has run (i.e. every session except pure KNOWLEDGE) -- it's the single most useful join key for per-merchant reliability trends, don't drop it just because other fields below are unresolved; include `vertical` alongside it whenever `store_domain` is included -- BRAND_DISCOVER Step 8 (Section 5) already records `{vertical}` for METADATA.md, just reuse that same value here. The rest are genuinely optional -- include whichever resolved during the session, omit the rest:
+**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, KNOWLEDGE mode's answer when the user doesn't continue into THEME_EDIT, or any point ThemeMate cannot continue). Always include `role=<role>` -- it's known for the full session (Section 2) and is the main way completed/blocked/error outcomes get sliced by who ran the session. Always include `turns` and `session_duration_min` too -- the running counters above are tracked for every session regardless of mode. Always include `summary` (finalized -- what actually happened, refining or replacing the initial value set at `session_start`) and `usecase_met` (`yes`/`no` -- your own judgment of whether what happened actually satisfies the `usecase` captured at `session_start`; distinct from `outcome` below, which tracks whether the session reached a definitive completion state, not whether the original intent was met). Always include `store_domain` too when BRAND_DISCOVER has run (i.e. every session except pure KNOWLEDGE) -- it's the single most useful join key for per-merchant reliability trends, don't drop it just because other fields below are unresolved; include `vertical` alongside it whenever `store_domain` is included -- BRAND_DISCOVER Step 8 (Section 5) already records `{vertical}` for METADATA.md, just reuse that same value here. The rest are genuinely optional -- include whichever resolved during the session, omit the rest:
 - `store_domain` -- the `.myshopify.com` (or resolved custom) domain captured in BRAND_DISCOVER Step 1/4.
 - `vertical` -- the store's industry, already recorded in BRAND_DISCOVER Step 8 (Section 5) alongside theme name and Swym version (e.g. "apparel", "footwear", "home", "beauty").
 - `lines_written` -- THEME_EDIT only (Section 5, EDIT -- Step C).
@@ -2089,10 +2062,10 @@ Same PII backstop as the `session_end` `summary` below -- never include a custom
 `failure_category` and `escalated_to` are optional too, but only ever included when `outcome != completed`:
 ```bash
 # outcome=completed -- no failure_category/escalated_to
-bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=completed usecase_met=<yes|no> turns=<n> session_duration_min=<n> tokens=<n, if resolved> summary="<finalized status>" store_domain=<domain> vertical=<vertical> lines_written=<n, THEME_EDIT only> git_org=<org> git_repo=<repo> pr_url=<url> preview_url=<url>
+bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=completed usecase_met=<yes|no> turns=<n> session_duration_min=<n> summary="<finalized status>" store_domain=<domain> vertical=<vertical> lines_written=<n, THEME_EDIT only> git_org=<org> git_repo=<repo> pr_url=<url> preview_url=<url>
 
 # outcome=blocked|error|scope_rejected -- include the two optional fields
-bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> usecase_met=<yes|no> turns=<n> session_duration_min=<n> tokens=<n, if resolved> summary="<finalized status>" failure_category=<failure_category> escalated_to=<escalated_to> store_domain=<domain>
+bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> usecase_met=<yes|no> turns=<n> session_duration_min=<n> summary="<finalized status>" failure_category=<failure_category> escalated_to=<escalated_to> store_domain=<domain>
 ```
 
 **`feedback` -- ask once per session, closed-enum rating + optional short note.** Two trigger points, never both in the same session:

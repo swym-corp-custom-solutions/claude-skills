@@ -21,6 +21,7 @@ const TELEMETRY_SCHEMA = {
     "vertical",
     "lines_written",
     "turns",
+    "tokens",
     "session_duration_min",
     "summary",
     "satisfaction",
@@ -129,6 +130,7 @@ const TELEMETRY_SCHEMA = {
     "vertical",
     "lines_written",
     "turns",
+    "tokens",
     "session_duration_min",
     "summary",
     "satisfaction",
@@ -142,7 +144,7 @@ const TELEMETRY_SCHEMA = {
     "account_name"
   ]
 };
-const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "feature", "usecase", "platform", "outcome", "usecase_met", "failure_category", "escalated_to", "store_domain", "vertical", "lines_written", "turns", "session_duration_min", "summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain", "account_name"];
+const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "feature", "usecase", "platform", "outcome", "usecase_met", "failure_category", "escalated_to", "store_domain", "vertical", "lines_written", "turns", "tokens", "session_duration_min", "summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain", "account_name"];
 const SHEET_NAME = 'events';
 const TOKEN_PROPERTY_KEY = 'THEMEMATE_TOKEN';
 

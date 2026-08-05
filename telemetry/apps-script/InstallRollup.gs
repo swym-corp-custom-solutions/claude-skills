@@ -46,6 +46,7 @@ const ROLLUP_COLUMNS = [
   'success_rate',
   'error_rate',
   'avg_turns',
+  'avg_tokens',
   'avg_session_duration_min',
   'satisfaction_positive',
   'satisfaction_neutral',
@@ -119,6 +120,9 @@ function processEventsRollup_(installs, sheet) {
 
     const turnsRaw = getVal('turns');
     if (turnsRaw !== '') { rec.turnsSum += Number(turnsRaw) || 0; rec.turnsCount++; }
+
+    const tokensRaw = getVal('tokens');
+    if (tokensRaw !== '') { rec.tokensSum += Number(tokensRaw) || 0; rec.tokensCount++; }
 
     const durationRaw = getVal('session_duration_min');
     if (durationRaw !== '') { rec.durationSum += Number(durationRaw) || 0; rec.durationCount++; }
@@ -199,6 +203,8 @@ function getRollupRecord_(installs, installId) {
       scope_rejected_count: 0,
       turnsSum: 0,
       turnsCount: 0,
+      tokensSum: 0,
+      tokensCount: 0,
       durationSum: 0,
       durationCount: 0,
       satisfaction_positive: 0,
@@ -264,6 +270,7 @@ function writeRollup_(ss, installs) {
       outcomeSum ? rec.completed_count / outcomeSum : '',
       outcomeSum ? rec.error_count / outcomeSum : '',
       rec.turnsCount ? rec.turnsSum / rec.turnsCount : '',
+      rec.tokensCount ? rec.tokensSum / rec.tokensCount : '',
       rec.durationCount ? rec.durationSum / rec.durationCount : '',
       rec.satisfaction_positive,
       rec.satisfaction_neutral,
