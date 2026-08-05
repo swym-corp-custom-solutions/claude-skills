@@ -164,9 +164,24 @@ Addresses Copilot review findings on PR #17.
 
 ## ThemeMate
 
+### [2.13.0] 2026-08-05: Total session tokens in telemetry
+
+Current version.
+
+**Section 14 -- TELEMETRY**
+- New `tokens` field, tracked alongside `turns`/`session_duration_min` as a third running counter, reported on `session_heartbeat` and `session_end`. Best-effort and exact-when-resolvable, never estimated: when running inside Claude Code (the CLI) with Bash access, computed by reading this session's own transcript file (`~/.claude/projects/<sanitized-cwd>/<session-id>.jsonl` -- the session UUID is read from context already available, e.g. the "Scratchpad Directory" path, never discovered by listing the projects directory) and summing `input_tokens + output_tokens + cache_creation_input_tokens + cache_read_input_tokens` across the session. Omitted entirely in Claude Desktop or any other host with no equivalent readable transcript, rather than guessed from message length or any other proxy.
+- **Dedup by `requestId` before summing** -- a single API call is frequently split across multiple `assistant`-type JSONL lines (one per content block: text, tool_use, etc.), each carrying an identical copy of that call's `usage`. Verified against this session's own transcript: naively summing every `assistant` line overcounted by ~68% (16.5M vs the correct 9.8-10.2M) because 56 of 85 distinct API calls were logged as more than one line. Keyed on `requestId` (one `usage` per unique request) instead.
+- Recomputed fresh on every `session_heartbeat`/`session_end` rather than tracked as a running delta -- the transcript already holds the full history, re-summing it is cheap and avoids drift.
+
+**`telemetry/schema.json` / generated artifacts**
+- `tokens` added to `accepted_keys` and `column_order` (no enum, numeric like `turns`/`lines_written`). Regenerated `telemetry-emit.sh`'s embedded schema block and `telemetry/apps-script/Code.gs` via `scripts/generate_telemetry_artifacts.py`.
+
+**`telemetry/apps-script/InstallRollup.gs` (hand-maintained)**
+- `avg_tokens` added to the per-install rollup, mirroring `avg_turns` exactly (sum/count accumulation, same falsy-safe `cellValue_` read, same column placement next to `avg_turns`).
+
 ### [2.12.0] 2026-08-05: Telemetry forcing function, Playwright cold-start, account_name as free text
 
-Current version. Addresses field feedback from live usage.
+Superseded by 2.13.0. Archived at `versions/SKILL-2.12.0.md`.
 
 **Section 1 / Section 14 -- session_start forcing function**
 - `session_start` telemetry was a memory-held obligation with no forcing function -- nothing surfaced a skip, and one happened in practice. Both the top-level session-start steps (Section 1) and Section 14's own `session_start` instructions now say to add a TodoWrite item at the exact point MODE is classified (in_progress before resolving fields, completed right after the emit call), instead of just narrating the intent to emit it.
