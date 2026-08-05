@@ -164,9 +164,29 @@ Addresses Copilot review findings on PR #17.
 
 ## ThemeMate
 
+### [2.12.0] 2026-08-05: Telemetry forcing function, Playwright cold-start, account_name as free text
+
+Current version. Addresses field feedback from live usage.
+
+**Section 1 / Section 14 -- session_start forcing function**
+- `session_start` telemetry was a memory-held obligation with no forcing function -- nothing surfaced a skip, and one happened in practice. Both the top-level session-start steps (Section 1) and Section 14's own `session_start` instructions now say to add a TodoWrite item at the exact point MODE is classified (in_progress before resolving fields, completed right after the emit call), instead of just narrating the intent to emit it.
+
+**Section 6 -- BROWSER SETUP: fresh-machine Playwright registration**
+- New Step 0: `claude mcp list | grep -i playwright` before anything else. Previously Step 5 assumed a Playwright MCP server entry already existed and only covered adding the CDP arg to it -- on a fresh machine with no entry at all, there was no step for registering one from scratch. Step 0 now runs `claude mcp add -s user playwright -- npx -y @playwright/mcp@latest --cdp-endpoint http://127.0.0.1:9222` directly (folds Step 5's arg into the same command) and calls out that this requires a session restart before any browser tool becomes callable -- Step 5 is now explicitly the "entry already exists" path only.
+
+**Section 5 -- BRAND_DISCOVER pre-step: distinguish tool-absent from CDP-unreachable**
+- The CDP connectivity pre-step only detected "CDP unreachable" (`ECONNREFUSED`), which assumes a browser tool exists to even throw that error. A session with no Playwright MCP server registered at all is a different failure mode (Section 6 Step 0 fixes it, not Steps 1-4) and previously had no dedicated check. Pre-step now checks the browser tool is present at all before attempting the eval.
+
+**Section 14 -- account_name as free text, not enum**
+- The one-time `account_name` ask is now explicit that it must be a plain-text chat question, not a multiple-choice/enum-style tool prompt (e.g. `AskUserQuestion`) -- a "Skip / Share a name" choice can't capture the actual name in the same round trip and forces a second back-and-forth to get it.
+
+**`telemetry-emit.sh` -- local audit trail**
+- The `curl` send is backgrounded/disowned by design (never blocks) and its result was never checked, so there was no way on a given machine to tell an attempted-and-dropped event apart from one that was never attempted. New minimal local log (`~/.claude/.thememate-telemetry.log`, rotated to the last 500 lines) records `timestamp event=<event> session_id=<id>` right before every `curl` call -- no other payload fields, so it carries no more PII than what already left the machine.
+- Log writes and rotation run under `umask 077`, with an explicit `chmod 600` backstop for a pre-existing log file -- since it records usage timing and session_ids, it shouldn't inherit the process's (often world-readable) default umask. Rotation cleans up its `.tmp` file on a failed `tail` instead of leaving it stale.
+
 ### [2.11.0] 2026-08-05: Self-heal skill-updater.sh/telemetry-emit.sh on existing installs
 
-Current version.
+Superseded by 2.12.0. Archived at `versions/SKILL-2.11.0.md`.
 
 **Section 14 -- TELEMETRY**
 - New self-heal check, once per session before anything else in this section: `grep -q "sync_if_sha_changed" ~/.claude/skill-updater.sh`. If that fails (missing, or predates the self-update mechanism added to `skill-updater.sh`), fetch fresh copies of `skill-updater.sh` and `telemetry-emit.sh` directly from the repo via `gh api` and overwrite the local ones.

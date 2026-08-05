@@ -138,6 +138,28 @@ print(json.dumps(fields))
 
 [ -n "$PAYLOAD" ] || exit 0
 
+# Local audit trail. The curl below is backgrounded/disowned and never
+# checked for success, so without this there is no way on this machine to
+# tell an event that was actually attempted apart from one silently dropped
+# by validation above or lost to the network. Deliberately minimal (no PII,
+# no payload contents): event, session_id, timestamp only. Rotated to the
+# last 500 lines so it never grows unbounded.
+LOG_FILE="$HOME/.claude/.thememate-telemetry.log"
+SESSION_ID_LOGGED=$(printf '%s\n' "$@" | grep -m1 '^session_id=' | cut -d= -f2-)
+(
+  umask 077
+  echo "${TS} event=${EVENT} session_id=${SESSION_ID_LOGGED}" >> "$LOG_FILE"
+  if tail -n 500 "$LOG_FILE" > "${LOG_FILE}.tmp"; then
+    mv "${LOG_FILE}.tmp" "$LOG_FILE"
+  else
+    rm -f "${LOG_FILE}.tmp"
+  fi
+) 2>/dev/null
+# Backstop: umask only governs newly-created files, so a log file left
+# over from before this fix (or written by a process with a looser umask)
+# needs an explicit tightening too, since it records timing/session_ids.
+chmod 600 "$LOG_FILE" 2>/dev/null
+
 # Backgrounded and disowned so the caller never waits on network I/O -- a
 # blocking `curl` here would contradict the "NEVER blocks" contract above,
 # even bounded by --max-time.
