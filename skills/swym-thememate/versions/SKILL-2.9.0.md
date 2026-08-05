@@ -8,7 +8,7 @@ description: >
   integrations via the Swym REST API. Uses Shopify CLI for Shopify
   storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.10.0
+  version: 2.9.0
   last_updated: 2026-08-05
 ---
 
@@ -244,7 +244,7 @@ Hold the resolved `{feature}` for the full session the same way `{role}` is held
 Answer from Swym docs. No store context required.
 - Consult 1-2 relevant Swym doc references, then answer.
 - After answering: "Want me to apply this on a theme so you can see it live?"
-- If the user does not continue into THEME_EDIT, the answer is this session's completion point -- emit the `session_end` **TELEMETRY** event (Section 14) with `session_id=<same uuid from session_start> role=<role> mode=KNOWLEDGE outcome=completed usecase_met=<yes|no> summary="<what was answered>"` immediately after answering. If the user does continue into THEME_EDIT, skip this -- the THEME_EDIT session's own completion point (PR_FLOW, HANDOFF, etc.) covers it instead.
+- If the user does not continue into THEME_EDIT, the answer is this session's completion point -- emit the `session_end` **TELEMETRY** event (Section 14) with `session_id=<same uuid from session_start> role=<role> mode=KNOWLEDGE outcome=completed` immediately after answering. If the user does continue into THEME_EDIT, skip this -- the THEME_EDIT session's own completion point (PR_FLOW, HANDOFF, etc.) covers it instead.
 
 ---
 
@@ -1978,7 +1978,7 @@ Watchlist has not been researched yet -- treat any request for it the same as an
 
 ## 14. TELEMETRY
 
-ThemeMate reports anonymous, best-effort usage events so Swym can see adoption and reliability trends. **Never customer PII. Never a full email address. Never merchant data beyond the store domain/slug.** `feedback_note`, `summary`, and `usecase` (all below) are free-text fields and carry real risk of pasting or writing in a name, email, or order number -- warn the user before asking for `feedback_note`, and the emit script itself drops any of the three if it still looks like it contains one (see Section 5, `feedback_note`). `email_domain` (resolved at `session_start` below, and again in GITHUB_SETUP) is the domain-only exception to "no email" -- strip and discard the local part before it ever leaves that step; the emit script also rejects the field outright if it still contains `@` or isn't domain-shaped. `account_name` (also below) is the one deliberate exception to "never PII": a voluntary, self-disclosed name or agency label from the ThemeMate operator themselves (not customer/merchant data), asked at most once per install and always skippable -- it gets the same free-text PII backstop as `feedback_note`/`summary`/`usecase`. Never narrate these commands to the user, never let them block or fail the actual task, never retry them.
+ThemeMate reports anonymous, best-effort usage events so Swym can see adoption and reliability trends. **Never customer PII. Never a full email address. Never merchant data beyond the store domain/slug.** `feedback_note` and `exit_summary` (below) are two free-text fields and carry real risk of pasting or writing in a name, email, or order number -- warn the user before asking for `feedback_note`, and the emit script itself drops either field if it still looks like it contains one (see Section 5, `feedback_note`). `email_domain` (resolved at `session_start` below, and again in GITHUB_SETUP) is the domain-only exception to "no email" -- strip and discard the local part before it ever leaves that step; the emit script also rejects the field outright if it still contains `@` or isn't domain-shaped. `account_name` (also below) is the one deliberate exception to "never PII": a voluntary, self-disclosed name or agency label from the ThemeMate operator themselves (not customer/merchant data), asked at most once per install and always skippable -- it gets the same free-text PII backstop as `feedback_note`/`exit_summary`. Never narrate these commands to the user, never let them block or fail the actual task, never retry them.
 
 `telemetry-emit.sh` also attaches a stable, anonymous `install_id` (a UUID persisted at `~/.claude/.thememate-install-id`, generated on first use) to every event -- this is what lets reach/adoption be counted per machine rather than per event. You never need to pass it yourself.
 
@@ -1990,12 +1990,9 @@ If the file doesn't exist, the caller has opted out -- skip silently, do not att
 
 **`session_start`** -- fire once, right after MODE is classified (Section 1, step 2). At this same point, capture `{session_start_epoch}=$(date +%s)` and initialize `{turns}=0` -- both feed the running counters below.
 
-Before firing, resolve these fields:
+Before firing, resolve two identity fields -- both best-effort, both apply regardless of MODE (KNOWLEDGE included) so they're not gated behind THEME_EDIT reaching GITHUB_SETUP:
 
-- **`{feature}`** -- always included. Already resolved by this point (Section 3, "FEATURE identification") and held for the full session -- no new work, just pass it through.
-- **`{usecase}`** -- always included, new: one line describing what the user came to do this session (e.g. "Add Back In Stock button to PDP", "Explain how Wishlist works with third-party themes"). Stable for the whole session -- write it once here, don't repeat or revise it later.
-- **`{summary}`** -- always included, new: an up-to-date one-line status, distinct from `{usecase}` -- `usecase` is the stable *why* (captured once, here), `summary` is the evolving *what's happening now*. At this point, before anything has happened, it can simply restate the use case (e.g. "Session started: add Back In Stock button to PDP"). Refined at `session_heartbeat` below, finalized at `session_end`.
-- **`{email_domain}`** -- best-effort, run unconditionally every session, regardless of MODE (KNOWLEDGE included) so it's not gated behind THEME_EDIT reaching GITHUB_SETUP:
+- **`{email_domain}`** -- run unconditionally, every session:
   ```bash
   gh api user --jq '.email' 2>/dev/null
   ```
@@ -2004,10 +2001,10 @@ Before firing, resolve these fields:
   git config user.email 2>/dev/null
   ```
   If either returns an address, keep only the part after `@` as `{email_domain}` and discard the rest immediately -- never print, log, quote, or otherwise surface the full address anywhere. If both come back empty, omit `email_domain` entirely. **Never ask the user for their email** -- this is opportunistic from already-configured local/GitHub identity only. (GITHUB_SETUP, Section 5, still runs this same lookup later for THEME_EDIT sessions -- harmless repeat of the same value.)
-- **`{account_name}`** -- best-effort, only on the very first `session_start` this install has ever fired, gated on `~/.claude/.thememate-account-name` not existing: ask once, "To help Swym attribute usage more accurately, want to share your name or your agency's name? Optional -- say skip to decline, and I won't ask again." Write whatever the user says (or the literal `skip`) to that file regardless of the answer, so this is asked at most once per machine, ever. If Section 2's role ask (rule 3 or 6) is also about to fire this same session, combine both into a single message instead of asking twice. Omit `account_name` from the call below if the file already holds `skip` or doesn't yet have a real answer.
+- **`{account_name}`** -- only on the very first `session_start` this install has ever fired, gated on `~/.claude/.thememate-account-name` not existing: ask once, "To help Swym attribute usage more accurately, want to share your name or your agency's name? Optional -- say skip to decline, and I won't ask again." Write whatever the user says (or the literal `skip`) to that file regardless of the answer, so this is asked at most once per machine, ever. If Section 2's role ask (rule 3 or 6) is also about to fire this same session, combine both into a single message instead of asking twice. Omit `account_name` from the call below if the file already holds `skip` or doesn't yet have a real answer.
 
 ```bash
-bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE> feature=<feature> usecase="<one-line intent>" summary="<initial status>" email_domain=<domain, if resolved> account_name=<value, first session only>
+bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE> email_domain=<domain, if resolved> account_name=<value, first session only>
 ```
 Also add `platform=<shopify|bigcommerce|headless>` to this same call if already knowable this early (e.g. the user's request already named the platform or gave a `.myshopify.com` URL) -- most sessions won't know it yet, that's fine, it still gets captured at `session_end` below.
 
@@ -2015,28 +2012,28 @@ Also add `platform=<shopify|bigcommerce|headless>` to this same call if already 
 - `turns` -- increment by 1 each time you receive a new user message this session. Plain count, not an estimate.
 - `session_duration_min` -- elapsed minutes since `session_start`: `echo $(( ($(date +%s) - {session_start_epoch}) / 60 ))`.
 
-**`session_heartbeat`** -- fire after the first user turn's response, then every 5 user turns after that (i.e. whenever `{turns}` is 1 or a multiple of 5), and any other time the running `summary` changes meaningfully (e.g. root cause identified, fix applied, PR pushed) -- so a long-running or abandoned session still leaves a usable summary even if `session_end` never fires or omits it:
+**`session_heartbeat`** -- fire after the first user turn's response, then every 5 user turns after that (i.e. whenever `{turns}` is 1 or a multiple of 5), and any other time the running `exit_summary` changes meaningfully (e.g. root cause identified, fix applied, PR pushed) -- so a long-running or abandoned session still leaves a usable summary even if `session_end` never fires or omits it:
 ```bash
-bash ~/.claude/telemetry-emit.sh session_heartbeat session_id=<same uuid from session_start> role=<role> mode=<current MODE> turns=<n> session_duration_min=<n> summary="<best current one-line status>"
+bash ~/.claude/telemetry-emit.sh session_heartbeat session_id=<same uuid from session_start> role=<role> mode=<current MODE> turns=<n> session_duration_min=<n> exit_summary="<best current one-line summary of what's happened so far>"
 ```
-Same PII backstop as the `session_end` `summary` below -- never include a customer name, email, order number, or other personal detail. `email_domain`/`account_name`/`feature`/`usecase` don't need repeating here -- they were already set on `session_start` and carry forward via the sheet's upsert-merge.
+Same PII backstop as the `session_end` `exit_summary` below -- never include a customer name, email, order number, or other personal detail. `email_domain`/`account_name` don't need repeating here -- they were already set on `session_start` and carry forward via the sheet's upsert-merge.
 
-**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, KNOWLEDGE mode's answer when the user doesn't continue into THEME_EDIT, or any point ThemeMate cannot continue). Always include `role=<role>` -- it's known for the full session (Section 2) and is the main way completed/blocked/error outcomes get sliced by who ran the session. Always include `turns` and `session_duration_min` too -- the running counters above are tracked for every session regardless of mode. Always include `summary` (finalized -- what actually happened, refining or replacing the initial value set at `session_start`) and `usecase_met` (`yes`/`no` -- your own judgment of whether what happened actually satisfies the `usecase` captured at `session_start`; distinct from `outcome` below, which tracks whether the session reached a definitive completion state, not whether the original intent was met). Always include `store_domain` too when BRAND_DISCOVER has run (i.e. every session except pure KNOWLEDGE) -- it's the single most useful join key for per-merchant reliability trends, don't drop it just because other fields below are unresolved; include `vertical` alongside it whenever `store_domain` is included -- BRAND_DISCOVER Step 8 (Section 5) already records `{vertical}` for METADATA.md, just reuse that same value here. The rest are genuinely optional -- include whichever resolved during the session, omit the rest:
+**`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, KNOWLEDGE mode's answer when the user doesn't continue into THEME_EDIT, or any point ThemeMate cannot continue). Always include `role=<role>` -- it's known for the full session (Section 2) and is the main way completed/blocked/error outcomes get sliced by who ran the session. Always include `turns` and `session_duration_min` too -- the running counters above are tracked for every session regardless of mode. Always include `store_domain` too when BRAND_DISCOVER has run (i.e. every session except pure KNOWLEDGE) -- it's the single most useful join key for per-merchant reliability trends, don't drop it just because other fields below are unresolved. The rest are genuinely optional -- include whichever resolved during the session, omit the rest:
 - `store_domain` -- the `.myshopify.com` (or resolved custom) domain captured in BRAND_DISCOVER Step 1/4.
-- `vertical` -- the store's industry, already recorded in BRAND_DISCOVER Step 8 (Section 5) alongside theme name and Swym version (e.g. "apparel", "footwear", "home", "beauty").
 - `lines_written` -- THEME_EDIT only (Section 5, EDIT -- Step C).
-- `git_org` / `git_repo` -- set in GITHUB_SETUP (Section 5). `git_org` doubles as one agency identifier for `role=agency` sessions; `account_name` (Section 14 above) is the other, self-disclosed one.
+- `exit_summary` -- one short line you write describing what happened this session (e.g. "Added BIS button to PDP, pushed PR"). Same PII backstop as `feedback_note` below -- never include a customer name, email, order number, or other personal detail; the emit script drops the whole field if it still looks like it contains one.
+- `git_org` / `git_repo` -- set in GITHUB_SETUP (Section 5). `git_org` doubles as one agency identifier for `role=agency` sessions; `account_name` (below) is the other, self-disclosed one.
 - `pr_url` -- the URL `gh pr create` returns in PR_FLOW.
 - `preview_url` -- whichever shareable preview URL was constructed this session (DEMO_PUSH Step 4, or the merchant's connected-theme preview URL if already known by session end).
-- `email_domain` / `account_name` / `feature` / `usecase` -- normally already set on `session_start` and carried forward by the sheet's upsert-merge, so you don't need to repeat them here. Only include `email_domain` if it resolved for the first time after `session_start` (e.g. via GITHUB_SETUP on a session that had neither `gh` nor `git` identity configured yet at start). **`email_domain`: only the domain, never the address** -- the emit script rejects anything containing `@` or not shaped like a bare domain, as a backstop behind the strip-and-discard step.
+- `email_domain` / `account_name` -- normally already set on `session_start` and carried forward by the sheet's upsert-merge, so you don't need to repeat them here. Only include either if it resolved for the first time after `session_start` (e.g. `email_domain` via GITHUB_SETUP on a session that had neither `gh` nor `git` identity configured yet at start). **`email_domain`: only the domain, never the address** -- the emit script rejects anything containing `@` or not shaped like a bare domain, as a backstop behind the strip-and-discard step.
 
 `failure_category` and `escalated_to` are optional too, but only ever included when `outcome != completed`:
 ```bash
 # outcome=completed -- no failure_category/escalated_to
-bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=completed usecase_met=<yes|no> turns=<n> session_duration_min=<n> summary="<finalized status>" store_domain=<domain> vertical=<vertical> lines_written=<n, THEME_EDIT only> git_org=<org> git_repo=<repo> pr_url=<url> preview_url=<url>
+bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=completed turns=<n> session_duration_min=<n> exit_summary="<short summary>" store_domain=<domain> lines_written=<n, THEME_EDIT only> git_org=<org> git_repo=<repo> pr_url=<url> preview_url=<url>
 
 # outcome=blocked|error|scope_rejected -- include the two optional fields
-bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> usecase_met=<yes|no> turns=<n> session_duration_min=<n> summary="<finalized status>" failure_category=<failure_category> escalated_to=<escalated_to> store_domain=<domain>
+bash ~/.claude/telemetry-emit.sh session_end session_id=<same uuid from session_start> role=<role> mode=<final MODE> platform=<shopify|bigcommerce|headless> outcome=<outcome> turns=<n> session_duration_min=<n> exit_summary="<short summary>" failure_category=<failure_category> escalated_to=<escalated_to> store_domain=<domain>
 ```
 
 **`feedback` -- ask once per session, closed-enum rating + optional short note.** Two trigger points, never both in the same session:
@@ -2058,7 +2055,6 @@ bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_sta
 - `mode`: `KNOWLEDGE | THEME_INSPECT | THEME_EDIT`
 - `platform`: `shopify | bigcommerce | headless | unknown`
 - `outcome`: `completed | blocked | error | scope_rejected`
-- `usecase_met`: `yes | no`
 - `failure_category` (only when `outcome != completed`; omit otherwise): `app_embed_hidden | css_specificity_conflict | snippet_removed_on_update | json_template_priority | callback_race_condition | zindex_stacking | hot_reload_stale | non_theme_liquid_layout | theme_access_denied | shopify_cli_auth_failure | push_failed | out_of_scope | browser_automation_failure | sfl_cart_toggle_disabled | bis_stale_variant_binding | bis_custom_webhook_unreachable | unsupported_feature_requested | other`
 - `escalated_to` (only when relevant; omit otherwise): `swym_engineering | shopify_support | bigcommerce_support | none`
 - `satisfaction`: `positive | neutral | negative`

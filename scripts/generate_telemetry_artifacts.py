@@ -224,7 +224,7 @@ function normalizePayload_(payload) {{
     // Defense in depth: telemetry-emit.sh already scrubs these free-text
     // fields client-side, but the receiver shouldn't trust that a caller
     // went through the emit script rather than posting directly.
-    if ((key === 'feedback_note' || key === 'exit_summary' || key === 'account_name') && (/@/.test(value) || /\d{{7,}}/.test(value))) continue;
+    if ((key === 'feedback_note' || key === 'summary' || key === 'account_name' || key === 'usecase') && (/@/.test(value) || /\d{{7,}}/.test(value))) continue;
     if (Object.prototype.hasOwnProperty.call(enums, key)) {{
       if (!enums[key].includes(value)) continue;
     }}

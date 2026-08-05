@@ -10,15 +10,19 @@ const TELEMETRY_SCHEMA = {
     "session_id",
     "role",
     "mode",
+    "feature",
+    "usecase",
     "platform",
     "outcome",
+    "usecase_met",
     "failure_category",
     "escalated_to",
     "store_domain",
+    "vertical",
     "lines_written",
     "turns",
     "session_duration_min",
-    "exit_summary",
+    "summary",
     "satisfaction",
     "feedback_reason",
     "feedback_note",
@@ -59,6 +63,10 @@ const TELEMETRY_SCHEMA = {
       "blocked",
       "error",
       "scope_rejected"
+    ],
+    "usecase_met": [
+      "yes",
+      "no"
     ],
     "failure_category": [
       "app_embed_hidden",
@@ -110,15 +118,19 @@ const TELEMETRY_SCHEMA = {
     "session_id",
     "role",
     "mode",
+    "feature",
+    "usecase",
     "platform",
     "outcome",
+    "usecase_met",
     "failure_category",
     "escalated_to",
     "store_domain",
+    "vertical",
     "lines_written",
     "turns",
     "session_duration_min",
-    "exit_summary",
+    "summary",
     "satisfaction",
     "feedback_reason",
     "feedback_note",
@@ -130,7 +142,7 @@ const TELEMETRY_SCHEMA = {
     "account_name"
   ]
 };
-const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "turns", "session_duration_min", "exit_summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain", "account_name"];
+const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "feature", "usecase", "platform", "outcome", "usecase_met", "failure_category", "escalated_to", "store_domain", "vertical", "lines_written", "turns", "session_duration_min", "summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain", "account_name"];
 const SHEET_NAME = 'events';
 const TOKEN_PROPERTY_KEY = 'THEMEMATE_TOKEN';
 
@@ -223,7 +235,7 @@ function normalizePayload_(payload) {
     // Defense in depth: telemetry-emit.sh already scrubs these free-text
     // fields client-side, but the receiver shouldn't trust that a caller
     // went through the emit script rather than posting directly.
-    if ((key === 'feedback_note' || key === 'exit_summary' || key === 'account_name') && (/@/.test(value) || /\d{7,}/.test(value))) continue;
+    if ((key === 'feedback_note' || key === 'summary' || key === 'account_name' || key === 'usecase') && (/@/.test(value) || /\d{7,}/.test(value))) continue;
     if (Object.prototype.hasOwnProperty.call(enums, key)) {
       if (!enums[key].includes(value)) continue;
     }

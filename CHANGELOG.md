@@ -14,6 +14,18 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## Infrastructure
 
+### [telemetry-automation] 2026-08-05 — Rename exit_summary to summary, add feature/usecase/vertical/usecase_met
+
+**`telemetry/schema.json`**
+- `exit_summary` renamed to `summary` in `accepted_keys`/`column_order`
+- New free-text keys: `feature`, `usecase`, `vertical` (no enum)
+- New enum key: `usecase_met` (`yes`/`no`)
+- `column_order` regrouped: `feature`/`usecase` next to `mode` (all resolved at `session_start`), `usecase_met` next to `outcome` (both session-end judgments), `vertical` next to `store_domain` (both store-context, resolved once BRAND_DISCOVER runs)
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated) / **`telemetry-emit.sh`**
+- The free-text PII regex condition (hardcoded in both the `Code.gs` template and `telemetry-emit.sh`'s `FREE_TEXT_KEYS` tuple) drops `exit_summary`, adds `summary` and `usecase`
+- Migration note: the `exit_summary` header cell in the live Sheet needs a manual one-time rename to `summary` before redeploying, so existing data isn't split into two columns (`ensureHeaders_` only appends missing headers, it doesn't rename them)
+
 ### [telemetry-automation] 2026-08-05 — Upsert the heartbeat sheet by install_id
 
 **`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
@@ -125,9 +137,21 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## ThemeMate
 
-### [2.9.0] 2026-08-05: Role/account_name caching, email_domain for every mode
+### [2.10.0] 2026-08-05: usecase/summary/usecase_met, feature and vertical in telemetry
 
 Current version.
+
+**Section 14 -- TELEMETRY**
+- `exit_summary` renamed to `summary`. Previously only sent optionally at `session_heartbeat`/`session_end`; now always seeded at `session_start` too, refined at `session_heartbeat`, finalized at `session_end`. Existing `heartbeat`/`events` sheets need the `exit_summary` header cell manually renamed to `summary` so history and new data land in the same column (see `telemetry/README.md`).
+- New `usecase` field: one-line description of what the user came to do, written once at `session_start`, stable for the session -- distinct from `summary`, which is the evolving *what's happening now* rather than the stable *why*.
+- New `usecase_met` field (`yes`/`no`): ThemeMate's own judgment at `session_end` of whether what happened actually satisfies `usecase` -- distinct from `outcome` (session completion state) and `satisfaction` (the user's own after-the-fact rating). Self-assessed, not asked to the user.
+- New `feature` field in telemetry: wires the already-resolved `{feature}` (Section 3, FEATURE identification) into `session_start` -- no new inference, just passes through a value the skill already computes for every session.
+- New `vertical` field in telemetry: wires the already-recorded `{vertical}` (BRAND_DISCOVER Step 8, Section 5 -- already used for METADATA.md) into `session_end` whenever `store_domain` is included -- no new inference here either.
+- `usecase` added to the free-text PII backstop (same treatment as `feedback_note`/`summary`) since it's LLM-paraphrased from the user's own request. `feature`/`vertical` are short AI-classified labels, not verbatim user text -- excluded from that list.
+
+### [2.9.0] 2026-08-05: Role/account_name caching, email_domain for every mode
+
+Superseded by 2.10.0. Archived at `versions/SKILL-2.9.0.md`.
 
 **Section 2 -- ROLES**
 - The "which Swym team" ask (rule 2, now rule 3) and the "Swym/agency/merchant" fallback ask (rule 5, now rule 6) previously fired every session with no memory of a prior answer. Both now cache their resolved value to `~/.claude/.thememate-role`, checked before either ask runs -- a returning user isn't asked again. An explicit in-session role statement (rule 1) always overwrites the cache. Context-inferred `agency`/`merchant` (rule 5, from "my client's store" vs "my store") is intentionally not cached -- that can legitimately vary session to session for the same person.
