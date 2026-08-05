@@ -182,6 +182,7 @@ Current version. Addresses field feedback from live usage.
 
 **`telemetry-emit.sh` -- local audit trail**
 - The `curl` send is backgrounded/disowned by design (never blocks) and its result was never checked, so there was no way on a given machine to tell an attempted-and-dropped event apart from one that was never attempted. New minimal local log (`~/.claude/.thememate-telemetry.log`, rotated to the last 500 lines) records `timestamp event=<event> session_id=<id>` right before every `curl` call -- no other payload fields, so it carries no more PII than what already left the machine.
+- Log writes and rotation run under `umask 077`, with an explicit `chmod 600` backstop for a pre-existing log file -- since it records usage timing and session_ids, it shouldn't inherit the process's (often world-readable) default umask. Rotation cleans up its `.tmp` file on a failed `tail` instead of leaving it stale.
 
 ### [2.11.0] 2026-08-05: Self-heal skill-updater.sh/telemetry-emit.sh on existing installs
 
