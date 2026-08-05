@@ -14,6 +14,80 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## Infrastructure
 
+### [telemetry-automation] 2026-08-05 — Code review fixes: falsy-0 handling, server-side email_domain check, SHA-cache correctness
+
+Addresses Copilot review findings on PR #17.
+
+**`telemetry/apps-script/InstallRollup.gs`**
+- New shared `cellValue_()` replaces two duplicated `getVal` closures that used `row[col[name]] || ''` -- that coerced a legitimate falsy cell value (e.g. `turns=0`, `ping_count=0`) to an empty string, silently excluding it from averages/counts. Explicit undefined/null check instead.
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- `normalizePayload_` now validates `email_domain`'s shape server-side (mirrors `telemetry-emit.sh`'s `EMAIL_DOMAIN_PATTERN`) instead of relying solely on the client-side check -- `doPost` already documents that it can't trust a caller went through the emit script, so a direct POST to the web app could otherwise store a full email address in that column.
+
+**`skill-updater.sh`**
+- `sync_if_sha_changed`'s cache lookups switched from `grep "^$name="` to `awk -F= -v n="$name" '$1==n'` -- `$name` (e.g. `telemetry-emit.sh`) contains a literal `.`, a regex metacharacter grep would otherwise interpret as "any character," risking a false match against an unrelated cache line.
+- `sync_file_from_repo` now returns non-zero on a failed fetch (empty response), and `sync_if_sha_changed` only writes the new SHA to the cache when the fetch actually succeeded -- previously a transient `gh api` failure on the day the SHA changed would still cache that SHA, making the real update look "already applied" and permanently skipping it.
+- Verified with a stubbed test: a failed fetch leaves the cache untouched (retries next run); a successful fetch on the next attempt caches correctly.
+
+### [install] 2026-08-05 — Auto-update telemetry-emit.sh and skill-updater.sh itself
+
+`skill-updater.sh`'s daily check only ever re-pulled `SKILL.md` files -- `skill-updater.sh` and `telemetry-emit.sh` were installed once by `install.sh` and never touched again, so schema/PII changes to those two files (e.g. the `exit_summary`->`summary` rename below) silently never reached an existing install without a manual re-run of `install.sh`.
+
+**`skill-updater.sh`**
+- New `sync_file_from_repo()` helper: content-diff sync (not version-string comparison, since neither file is version-tagged like `SKILL.md`) -- fetches the remote file, `mv`s it over the local copy if different, restores the executable bit
+- Deliberately **not** gated on SKILL.md's version -- infra-only fixes to these two files don't always ship with a skill version bump (this self-update mechanism itself is an example), so tying it to that would silently reopen the same gap for any future infra-only change
+- To avoid paying for a full content fetch every day regardless of whether anything changed, a new `sync_if_sha_changed()` wraps `sync_file_from_repo()` behind a single lightweight `gh api repos/.../contents?ref=main` call that returns both files' current git blob SHA; a locally cached SHA (`~/.claude/.thememate-sync-shas`) means the full fetch only happens on a day the SHA actually differs
+- `telemetry-emit.sh` now synced the same run as the `SKILL.md` check, gated on the existing `.thememate-telemetry-optout` marker (a bare `rm` of the file without that marker was always documented as a "this one install only" opt-out, not permanent -- see `install.sh`)
+- The script now also self-updates at the very end of its own run. Safe despite overwriting the file it's currently executing: `mv` is a rename, and the already-running process keeps reading its already-open file descriptor's original inode content regardless of the rename (standard POSIX-rename self-update pattern, not something specific to this script)
+- Verified the SHA-cache logic with a stubbed test harness: fetch+update on a new SHA, skip the fetch entirely when the cached SHA matches, fetch again once the SHA changes
+
+### [telemetry-automation] 2026-08-05 — Rename exit_summary to summary, add feature/usecase/vertical/usecase_met
+
+**`telemetry/schema.json`**
+- `exit_summary` renamed to `summary` in `accepted_keys`/`column_order`
+- New free-text keys: `feature`, `usecase`, `vertical` (no enum)
+- New enum key: `usecase_met` (`yes`/`no`)
+- `column_order` regrouped: `feature`/`usecase` next to `mode` (all resolved at `session_start`), `usecase_met` next to `outcome` (both session-end judgments), `vertical` next to `store_domain` (both store-context, resolved once BRAND_DISCOVER runs)
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated) / **`telemetry-emit.sh`**
+- The free-text PII regex condition (hardcoded in both the `Code.gs` template and `telemetry-emit.sh`'s `FREE_TEXT_KEYS` tuple) drops `exit_summary`, adds `summary` and `usecase`
+- Migration note: the `exit_summary` header cell in the live Sheet needs a manual one-time rename to `summary` before redeploying, so existing data isn't split into two columns (`ensureHeaders_` only appends missing headers, it doesn't rename them)
+
+### [telemetry-automation] 2026-08-05 — Upsert the heartbeat sheet by install_id
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- `HEARTBEAT_COLUMNS` changes shape from a raw per-event slice (`received_at, ts, install_id, skill, skill_version, ...heartbeat_keys`) to a derived per-install summary: `install_id, first_seen, last_seen, initial_version, current_version, ping_count, ...heartbeat_keys`
+- `doPost`'s heartbeat branch now calls new `upsertHeartbeatRow_` instead of `appendRow_`: no existing row for an `install_id` -> insert with `first_seen = last_seen`, `initial_version = current_version`, `ping_count = 1`; existing row -> `last_seen`/`current_version` advance, `first_seen`/`initial_version` stay write-once, `ping_count` increments, `heartbeat_keys` fields use latest-non-blank-wins (same semantics `upsertRow_` already used for `events`)
+- `findRowBySessionId_` generalized to `findRowByValue_(sheet, col, value)` so both `upsertRow_` (keyed on `session_id`) and `upsertHeartbeatRow_` (keyed on `install_id`) share the same row-lookup helper instead of duplicating it
+- `skill-updater.sh`'s daily lock already guarantees at most one heartbeat per install per calendar day, so `ping_count` doubles as a distinct-days-active count without needing to retain the old per-day rows
+- Verified with a standalone Node simulation of the merge logic: write-once fields (`first_seen`/`initial_version`) hold across repeated pings, advancing fields (`last_seen`/`current_version`) update, `ping_count` increments, and independent `install_id`s don't collide
+- Migration note: an existing `heartbeat` tab written before this shipped is in the old per-event shape and won't fit the new columns -- rename/archive it before redeploying so `getOrCreateSheet_` creates a fresh tab (see `telemetry/README.md`)
+
+**`telemetry/apps-script/InstallRollup.gs`**
+- `processHeartbeatRollup_` now reads each install's single pre-aggregated heartbeat row directly (`first_seen`/`last_seen`/`initial_version`/`current_version`/`ping_count`) instead of scanning many historical per-day rows; `days_active` now comes from `ping_count`
+- `processRollupSheet_` renamed to `processEventsRollup_`, scoped to `events` only; the `activeDays` day-counting `Set` (used by both sheets previously) is dropped in favor of `ping_count`
+
+### [telemetry-automation] 2026-08-05 — Per-install rollup sheet, account_name field, heartbeat identity enrichment
+
+**`telemetry/schema.json`**
+- New `account_name` key in `accepted_keys`/`column_order` (free text, no enum -- same PII treatment as `feedback_note`/`exit_summary`)
+- New `heartbeat_keys` array (`email_domain`, `account_name`) -- the subset of session-oriented fields the daily heartbeat ping is also allowed to carry, keeping `HEARTBEAT_COLUMNS` schema-driven instead of hand-edited
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- `load_schema()` validates every `heartbeat_keys` entry is also in `accepted_keys`
+- `HEARTBEAT_COLUMNS` built from `heartbeat_keys` instead of a hardcoded list
+- Free-text PII regex backstop (drop on email-shaped or long-digit-run content) extended to cover `account_name`
+
+**`telemetry-emit.sh`**
+- `account_name` added to the hand-maintained `FREE_TEXT_KEYS` tuple (same client-side PII scrub as `feedback_note`/`exit_summary`)
+
+**`skill-updater.sh`**
+- The daily heartbeat call now also resolves `email_domain` (`gh api user` / `git config user.email`, domain-only) and `account_name` (from the local one-time-answer cache) and passes both to `telemetry-emit.sh heartbeat` -- no LLM involved, best-effort, so idle installs that never open a real ThemeMate session still carry an identity signal
+
+**`telemetry/apps-script/InstallRollup.gs`** (new, hand-maintained -- not touched by the generator)
+- `buildInstallRollup()` reads `events` and `heartbeat` and writes one row per `install_id` to a new `install_rollup` sheet: `first_seen`, `last_seen`, `initial_version`, `current_version`, `account_name`, `email_domain`, `git_org`, `role`, `platform`, `session_count`, `days_active`, outcome counts, `success_rate`, `error_rate`, `avg_turns`, `avg_session_duration_min`, `satisfaction_*`
+- Full overwrite on every run; exposed via a "Telemetry -> Rebuild Install Rollup" menu (`onOpen()`) and can be wired to a daily time-driven trigger
+
 ### [telemetry-automation] 2026-07-27 — Sync failure_category enum, avoid full-column scans
 
 **`telemetry/schema.json`**
@@ -90,9 +164,41 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## ThemeMate
 
-### [2.8.0] 2026-07-24: Turns, session duration, and exit summary telemetry
+### [2.11.0] 2026-08-05: Self-heal skill-updater.sh/telemetry-emit.sh on existing installs
 
 Current version.
+
+**Section 14 -- TELEMETRY**
+- New self-heal check, once per session before anything else in this section: `grep -q "sync_if_sha_changed" ~/.claude/skill-updater.sh`. If that fails (missing, or predates the self-update mechanism added to `skill-updater.sh`), fetch fresh copies of `skill-updater.sh` and `telemetry-emit.sh` directly from the repo via `gh api` and overwrite the local ones.
+- Closes a bootstrap gap: `skill-updater.sh`'s own daily self-update logic can only run if it's already the code present on disk -- an existing install stuck on the pre-self-update version had no path to ever pick up that capability without someone manually re-running `install.sh`. This check lives in `SKILL.md` specifically because `SKILL.md` is the one file that reliably already auto-updates on every existing install.
+- Respects the `.thememate-telemetry-optout` marker for the `telemetry-emit.sh` half, same as `skill-updater.sh`'s own sync does. Self-limiting: once `skill-updater.sh` is current, the grep passes immediately on every future session and this does nothing further.
+
+### [2.10.0] 2026-08-05: usecase/summary/usecase_met, feature and vertical in telemetry
+
+Superseded by 2.11.0. Archived at `versions/SKILL-2.10.0.md`.
+
+**Section 14 -- TELEMETRY**
+- `exit_summary` renamed to `summary`. Previously only sent optionally at `session_heartbeat`/`session_end`; now always seeded at `session_start` too, refined at `session_heartbeat`, finalized at `session_end`. Existing `heartbeat`/`events` sheets need the `exit_summary` header cell manually renamed to `summary` so history and new data land in the same column (see `telemetry/README.md`).
+- New `usecase` field: one-line description of what the user came to do, written once at `session_start`, stable for the session -- distinct from `summary`, which is the evolving *what's happening now* rather than the stable *why*.
+- New `usecase_met` field (`yes`/`no`): ThemeMate's own judgment at `session_end` of whether what happened actually satisfies `usecase` -- distinct from `outcome` (session completion state) and `satisfaction` (the user's own after-the-fact rating). Self-assessed, not asked to the user.
+- New `feature` field in telemetry: wires the already-resolved `{feature}` (Section 3, FEATURE identification) into `session_start` -- no new inference, just passes through a value the skill already computes for every session.
+- New `vertical` field in telemetry: wires the already-recorded `{vertical}` (BRAND_DISCOVER Step 8, Section 5 -- already used for METADATA.md) into `session_end` whenever `store_domain` is included -- no new inference here either.
+- `usecase` added to the free-text PII backstop (same treatment as `feedback_note`/`summary`) since it's LLM-paraphrased from the user's own request. `feature`/`vertical` are short AI-classified labels, not verbatim user text -- excluded from that list.
+
+### [2.9.0] 2026-08-05: Role/account_name caching, email_domain for every mode
+
+Superseded by 2.10.0. Archived at `versions/SKILL-2.9.0.md`.
+
+**Section 2 -- ROLES**
+- The "which Swym team" ask (rule 2, now rule 3) and the "Swym/agency/merchant" fallback ask (rule 5, now rule 6) previously fired every session with no memory of a prior answer. Both now cache their resolved value to `~/.claude/.thememate-role`, checked before either ask runs -- a returning user isn't asked again. An explicit in-session role statement (rule 1) always overwrites the cache. Context-inferred `agency`/`merchant` (rule 5, from "my client's store" vs "my store") is intentionally not cached -- that can legitimately vary session to session for the same person.
+
+**Section 14 -- TELEMETRY**
+- `email_domain` now resolves at `session_start` for every MODE (KNOWLEDGE, THEME_INSPECT, THEME_EDIT), not only THEME_EDIT sessions that reach `GITHUB_SETUP` -- same opportunistic `gh api user` / `git config user.email` lookup, just run unconditionally and earlier. `GITHUB_SETUP` still runs the same lookup as a fallback.
+- New `account_name` field: a voluntary, self-disclosed name or agency label, asked once ever per install (gated on `~/.claude/.thememate-account-name` not existing, cached like `role` above), combined into a single message with the role ask when both fire in the same (first-ever) session. Always skippable. Gets the same free-text PII backstop as `feedback_note`/`exit_summary` (dropped if it looks like an email or long digit run). This is a deliberate exception to "never PII" -- it identifies the ThemeMate operator, never a merchant or customer.
+
+### [2.8.0] 2026-07-24: Turns, session duration, and exit summary telemetry
+
+Superseded by 2.9.0. Archived at `versions/SKILL-2.8.0.md`.
 
 **Section 14 -- TELEMETRY**
 - New running counters tracked from `session_start` onward: `turns` (running count of user messages) and `session_duration_min` (elapsed minutes since `session_start`, computed from `$(date +%s)`)

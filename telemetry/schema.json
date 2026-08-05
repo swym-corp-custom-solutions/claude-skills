@@ -5,15 +5,19 @@
     "session_id",
     "role",
     "mode",
+    "feature",
+    "usecase",
     "platform",
     "outcome",
+    "usecase_met",
     "failure_category",
     "escalated_to",
     "store_domain",
+    "vertical",
     "lines_written",
     "turns",
     "session_duration_min",
-    "exit_summary",
+    "summary",
     "satisfaction",
     "feedback_reason",
     "feedback_note",
@@ -21,7 +25,12 @@
     "git_repo",
     "pr_url",
     "preview_url",
-    "email_domain"
+    "email_domain",
+    "account_name"
+  ],
+  "heartbeat_keys": [
+    "email_domain",
+    "account_name"
   ],
   "enums": {
     "role": [
@@ -49,6 +58,10 @@
       "blocked",
       "error",
       "scope_rejected"
+    ],
+    "usecase_met": [
+      "yes",
+      "no"
     ],
     "failure_category": [
       "app_embed_hidden",
@@ -100,15 +113,19 @@
     "session_id",
     "role",
     "mode",
+    "feature",
+    "usecase",
     "platform",
     "outcome",
+    "usecase_met",
     "failure_category",
     "escalated_to",
     "store_domain",
+    "vertical",
     "lines_written",
     "turns",
     "session_duration_min",
-    "exit_summary",
+    "summary",
     "satisfaction",
     "feedback_reason",
     "feedback_note",
@@ -116,6 +133,7 @@
     "git_repo",
     "pr_url",
     "preview_url",
-    "email_domain"
+    "email_domain",
+    "account_name"
   ]
 }
