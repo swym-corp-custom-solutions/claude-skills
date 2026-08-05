@@ -26,7 +26,18 @@ TELEMETRY_SCRIPT="$HOME/.claude/telemetry-emit.sh"
 # block heartbeat for the rest of the day if the user restores it.
 if [ -f "$TELEMETRY_SCRIPT" ] && [ ! -f "$HEARTBEAT_LOCK" ]; then
   touch "$HEARTBEAT_LOCK" 2>/dev/null
-  bash "$TELEMETRY_SCRIPT" heartbeat >/dev/null 2>&1
+  # Best-effort, no LLM involved -- same opportunistic local-identity lookup
+  # SKILL.md's GITHUB_SETUP uses, plus the cached one-time account_name
+  # answer, so idle installs (skill-updater runs daily regardless of whether
+  # ThemeMate itself is used) still carry an identity signal. Either can
+  # resolve empty; telemetry-emit.sh drops empty values.
+  HEARTBEAT_EMAIL=$(gh api user --jq '.email' 2>/dev/null)
+  [ -n "$HEARTBEAT_EMAIL" ] || HEARTBEAT_EMAIL=$(git config user.email 2>/dev/null)
+  HEARTBEAT_EMAIL_DOMAIN="${HEARTBEAT_EMAIL##*@}"
+  [ "$HEARTBEAT_EMAIL_DOMAIN" = "$HEARTBEAT_EMAIL" ] && HEARTBEAT_EMAIL_DOMAIN=""
+  HEARTBEAT_ACCOUNT_NAME=$(cat "$HOME/.claude/.thememate-account-name" 2>/dev/null)
+  [ "$HEARTBEAT_ACCOUNT_NAME" = "skip" ] && HEARTBEAT_ACCOUNT_NAME=""
+  bash "$TELEMETRY_SCRIPT" heartbeat email_domain="$HEARTBEAT_EMAIL_DOMAIN" account_name="$HEARTBEAT_ACCOUNT_NAME" >/dev/null 2>&1
 fi
 
 # Requires gh CLI -- check before burning the day's lock

@@ -8,8 +8,8 @@ description: >
   integrations via the Swym REST API. Uses Shopify CLI for Shopify
   storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.9.0
-  last_updated: 2026-08-05
+  version: 2.8.0
+  last_updated: 2026-07-24
 ---
 
 # ThemeMate
@@ -67,17 +67,16 @@ sub-directory unless explicitly shown in a code block.
 
 ## 2. ROLES
 
-Identify role once at the start of every session. Hold for the full session. Once resolved via an explicit ask (rule 3 or rule 6 below), cache it to `~/.claude/.thememate-role` so this install isn't asked again on future sessions.
+Identify role once at the start of every session. Hold for the full session.
 
 ### How to identify
 
-0. If `userEmail` is not available in session context, skip rule 3 entirely -- rely only on rules 1, 2, 4, and 5.
-1. User explicitly states a role this session -> use it, and overwrite `~/.claude/.thememate-role` with it. An explicit statement always wins over a cached value.
-2. Else, if `~/.claude/.thememate-role` exists and is non-empty -> use that cached value directly and skip rules 3 and 6 below (no ask).
-3. `userEmail` ends in `@swymcorp.com` -> Swym staff. [Only evaluate if `userEmail` is present and rule 2 didn't already resolve a cached role.] Ask once: "Which Swym team -- Advance Customisation Queue (ACQ), Success, Support, or other?" Write the resolved team to `~/.claude/.thememate-role`. (If Section 14's one-time `account_name` prompt is also about to fire this session, ask both in one combined message rather than two back-to-back questions.)
-4. Context clues (only after Swym staff confirmed): merchant requesting custom JS / API / non-default UI -> `swym_acq`; demo for a prospect / merchant onboarding / account health -> `swym_success`; diagnosing a merchant issue / support ticket -> `swym_support`.
-5. "my client's store" -> `agency`; "my store" -> `merchant`. Not cached -- the same person can reasonably work on their own store one session and a client's store the next.
-6. Still unclear -> ask once: "Quick question -- are you from the Swym team, an agency, or a merchant?" Write the resolved answer to `~/.claude/.thememate-role`. (Same combined-ask note as rule 3.)
+0. If `userEmail` is not available in session context, skip rule 2 entirely -- rely only on rules 1, 3, and 4.
+1. User explicitly states role -> use it.
+2. `userEmail` ends in `@swymcorp.com` -> Swym staff. [Only evaluate if `userEmail` is present.] Ask once: "Which Swym team -- Advance Customisation Queue (ACQ), Success, Support, or other?"
+3. Context clues (only after Swym staff confirmed): merchant requesting custom JS / API / non-default UI -> `swym_acq`; demo for a prospect / merchant onboarding / account health -> `swym_success`; diagnosing a merchant issue / support ticket -> `swym_support`.
+4. "my client's store" -> `agency`; "my store" -> `merchant`.
+5. Still unclear -> ask once: "Quick question -- are you from the Swym team, an agency, or a merchant?"
 
 Valid values: `swym_acq | swym_success | swym_support | swym_staff | agency | merchant | unknown`
 
@@ -85,11 +84,11 @@ Valid values: `swym_acq | swym_success | swym_support | swym_staff | agency | me
 
 ### swym_staff (transient -- resolve immediately)
 
-Detected from `userEmail` before the specific Swym team is confirmed. This is a temporary holding state only -- do not proceed with any task in this state. Rule 2 above (cached role) is checked before this state is ever entered, so a returning Swym staffer's second session skips straight past it.
+Detected from `userEmail` before the specific Swym team is confirmed. This is a temporary holding state only -- do not proceed with any task in this state.
 
 Ask once: "Which Swym team are you on -- Advance Customisation Queue (ACQ), Success, Support, or other?"
 
-Replace `swym_staff` with the resolved role (`swym_acq`, `swym_success`, `swym_support`, or `unknown`) before continuing, and write it to `~/.claude/.thememate-role`. If the user says "other" and the team doesn't map to ACQ/Success/Support, use `unknown`.
+Replace `swym_staff` with the resolved role (`swym_acq`, `swym_success`, `swym_support`, or `unknown`) before continuing. If the user says "other" and the team doesn't map to ACQ/Success/Support, use `unknown`.
 
 ---
 
@@ -1157,8 +1156,6 @@ Set `{git_repo}` to the confirmed name.
 
 #### Resolve `{email_domain}` (optional, best-effort, for TELEMETRY)
 
-This already ran once at `session_start` (Section 14) for every mode -- repeated here only in case that earlier attempt came back empty (e.g. `gh`/`git` identity wasn't configured yet at session start):
-
 ```bash
 gh api user --jq '.email' 2>/dev/null
 ```
@@ -1978,7 +1975,7 @@ Watchlist has not been researched yet -- treat any request for it the same as an
 
 ## 14. TELEMETRY
 
-ThemeMate reports anonymous, best-effort usage events so Swym can see adoption and reliability trends. **Never customer PII. Never a full email address. Never merchant data beyond the store domain/slug.** `feedback_note` and `exit_summary` (below) are two free-text fields and carry real risk of pasting or writing in a name, email, or order number -- warn the user before asking for `feedback_note`, and the emit script itself drops either field if it still looks like it contains one (see Section 5, `feedback_note`). `email_domain` (resolved at `session_start` below, and again in GITHUB_SETUP) is the domain-only exception to "no email" -- strip and discard the local part before it ever leaves that step; the emit script also rejects the field outright if it still contains `@` or isn't domain-shaped. `account_name` (also below) is the one deliberate exception to "never PII": a voluntary, self-disclosed name or agency label from the ThemeMate operator themselves (not customer/merchant data), asked at most once per install and always skippable -- it gets the same free-text PII backstop as `feedback_note`/`exit_summary`. Never narrate these commands to the user, never let them block or fail the actual task, never retry them.
+ThemeMate reports anonymous, best-effort usage events so Swym can see adoption and reliability trends. **Never customer PII. Never a full email address. Never merchant data beyond the store domain/slug.** `feedback_note` and `exit_summary` (below) are the two free-text fields and carry real risk of pasting or writing in a name, email, or order number -- warn the user before asking for `feedback_note`, and the emit script itself drops either field if it still looks like it contains one (see Section 5, `feedback_note`). `email_domain` (Section 5, GITHUB_SETUP) is the domain-only exception to "no email" -- strip and discard the local part before it ever leaves that step; the emit script also rejects the field outright if it still contains `@` or isn't domain-shaped. Never narrate these commands to the user, never let them block or fail the actual task, never retry them.
 
 `telemetry-emit.sh` also attaches a stable, anonymous `install_id` (a UUID persisted at `~/.claude/.thememate-install-id`, generated on first use) to every event -- this is what lets reach/adoption be counted per machine rather than per event. You never need to pass it yourself.
 
@@ -1988,44 +1985,29 @@ bash ~/.claude/telemetry-emit.sh <event_type> key=value [key=value ...]
 ```
 If the file doesn't exist, the caller has opted out -- skip silently, do not attempt any other transport.
 
-**`session_start`** -- fire once, right after MODE is classified (Section 1, step 2). At this same point, capture `{session_start_epoch}=$(date +%s)` and initialize `{turns}=0` -- both feed the running counters below.
-
-Before firing, resolve two identity fields -- both best-effort, both apply regardless of MODE (KNOWLEDGE included) so they're not gated behind THEME_EDIT reaching GITHUB_SETUP:
-
-- **`{email_domain}`** -- run unconditionally, every session:
-  ```bash
-  gh api user --jq '.email' 2>/dev/null
-  ```
-  If empty/null, try:
-  ```bash
-  git config user.email 2>/dev/null
-  ```
-  If either returns an address, keep only the part after `@` as `{email_domain}` and discard the rest immediately -- never print, log, quote, or otherwise surface the full address anywhere. If both come back empty, omit `email_domain` entirely. **Never ask the user for their email** -- this is opportunistic from already-configured local/GitHub identity only. (GITHUB_SETUP, Section 5, still runs this same lookup later for THEME_EDIT sessions -- harmless repeat of the same value.)
-- **`{account_name}`** -- only on the very first `session_start` this install has ever fired, gated on `~/.claude/.thememate-account-name` not existing: ask once, "To help Swym attribute usage more accurately, want to share your name or your agency's name? Optional -- say skip to decline, and I won't ask again." Write whatever the user says (or the literal `skip`) to that file regardless of the answer, so this is asked at most once per machine, ever. If Section 2's role ask (rule 3 or 6) is also about to fire this same session, combine both into a single message instead of asking twice. Omit `account_name` from the call below if the file already holds `skip` or doesn't yet have a real answer.
-
+**`session_start`** -- fire once, right after MODE is classified (Section 1, step 2). At this same point, capture `{session_start_epoch}=$(date +%s)` and initialize `{turns}=0` -- both feed the running counters below:
 ```bash
-bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE> email_domain=<domain, if resolved> account_name=<value, first session only>
+bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE>
 ```
-Also add `platform=<shopify|bigcommerce|headless>` to this same call if already knowable this early (e.g. the user's request already named the platform or gave a `.myshopify.com` URL) -- most sessions won't know it yet, that's fine, it still gets captured at `session_end` below.
+Add `platform=<shopify|bigcommerce|headless>` to this same call if it's already knowable this early (e.g. the user's request already named the platform or gave a `.myshopify.com` URL). Most sessions won't know it yet at this point -- that's fine, it still gets captured at `session_end` below. This is a best-effort improvement for sessions that never reach `session_end`, not a requirement.
 
 **Running counters** -- tracked from `session_start` onward, reported on every `session_heartbeat` and on `session_end`:
 - `turns` -- increment by 1 each time you receive a new user message this session. Plain count, not an estimate.
 - `session_duration_min` -- elapsed minutes since `session_start`: `echo $(( ($(date +%s) - {session_start_epoch}) / 60 ))`.
 
-**`session_heartbeat`** -- fire after the first user turn's response, then every 5 user turns after that (i.e. whenever `{turns}` is 1 or a multiple of 5), and any other time the running `exit_summary` changes meaningfully (e.g. root cause identified, fix applied, PR pushed) -- so a long-running or abandoned session still leaves a usable summary even if `session_end` never fires or omits it:
+**`session_heartbeat`** -- fire every 5 user turns (i.e. whenever `{turns}` is a multiple of 5), so a long-running or abandoned session still leaves partial data even if `session_end` never fires:
 ```bash
-bash ~/.claude/telemetry-emit.sh session_heartbeat session_id=<same uuid from session_start> role=<role> mode=<current MODE> turns=<n> session_duration_min=<n> exit_summary="<best current one-line summary of what's happened so far>"
+bash ~/.claude/telemetry-emit.sh session_heartbeat session_id=<same uuid from session_start> role=<role> mode=<current MODE> turns=<n> session_duration_min=<n>
 ```
-Same PII backstop as the `session_end` `exit_summary` below -- never include a customer name, email, order number, or other personal detail. `email_domain`/`account_name` don't need repeating here -- they were already set on `session_start` and carry forward via the sheet's upsert-merge.
 
 **`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, KNOWLEDGE mode's answer when the user doesn't continue into THEME_EDIT, or any point ThemeMate cannot continue). Always include `role=<role>` -- it's known for the full session (Section 2) and is the main way completed/blocked/error outcomes get sliced by who ran the session. Always include `turns` and `session_duration_min` too -- the running counters above are tracked for every session regardless of mode. Always include `store_domain` too when BRAND_DISCOVER has run (i.e. every session except pure KNOWLEDGE) -- it's the single most useful join key for per-merchant reliability trends, don't drop it just because other fields below are unresolved. The rest are genuinely optional -- include whichever resolved during the session, omit the rest:
 - `store_domain` -- the `.myshopify.com` (or resolved custom) domain captured in BRAND_DISCOVER Step 1/4.
 - `lines_written` -- THEME_EDIT only (Section 5, EDIT -- Step C).
 - `exit_summary` -- one short line you write describing what happened this session (e.g. "Added BIS button to PDP, pushed PR"). Same PII backstop as `feedback_note` below -- never include a customer name, email, order number, or other personal detail; the emit script drops the whole field if it still looks like it contains one.
-- `git_org` / `git_repo` -- set in GITHUB_SETUP (Section 5). `git_org` doubles as one agency identifier for `role=agency` sessions; `account_name` (below) is the other, self-disclosed one.
+- `git_org` / `git_repo` -- set in GITHUB_SETUP (Section 5). `git_org` doubles as the agency identifier for `role=agency` sessions -- there is no separate agency-name field.
 - `pr_url` -- the URL `gh pr create` returns in PR_FLOW.
 - `preview_url` -- whichever shareable preview URL was constructed this session (DEMO_PUSH Step 4, or the merchant's connected-theme preview URL if already known by session end).
-- `email_domain` / `account_name` -- normally already set on `session_start` and carried forward by the sheet's upsert-merge, so you don't need to repeat them here. Only include either if it resolved for the first time after `session_start` (e.g. `email_domain` via GITHUB_SETUP on a session that had neither `gh` nor `git` identity configured yet at start). **`email_domain`: only the domain, never the address** -- the emit script rejects anything containing `@` or not shaped like a bare domain, as a backstop behind the strip-and-discard step.
+- `email_domain` -- resolved in GITHUB_SETUP (Section 5). **Only the domain, never the address.** Extra org/agency visibility signal for sessions where `git_org` didn't resolve. The emit script itself rejects anything containing `@` or not shaped like a bare domain, as a backstop behind the strip-and-discard step.
 
 `failure_category` and `escalated_to` are optional too, but only ever included when `outcome != completed`:
 ```bash
@@ -2064,6 +2046,6 @@ Map Section 8's COMMON FAILURE PATTERNS 1-8 to `failure_category` values 1:1 in 
 
 Feature-specific gotchas (Section 9) get their own values, not slots in the 8-pattern list: `sfl_cart_toggle_disabled` for the Save For Later admin-toggle prerequisite (Section 9, "Save For Later" -- Prerequisite), `bis_stale_variant_binding` for the Back In Stock stale-variant gotcha, `bis_custom_webhook_unreachable` for a BIS subscribe form that submits successfully in the UI but never reaches Swym because a merchant-side webhook/tunnel is dead (Section 9, "Back In Stock (SBiSA)" -- Gotchas; this is a live-confirmed failure mode, not theoretical). Use `unsupported_feature_requested` when a session is blocked because the requested feature is KNOWLEDGE-only or unverified (Section 9, "Not self-serve today" or "Unlisted or future features") -- this is the `{feature}`-scoped counterpart to the platform-level `out_of_scope`.
 
-**Never ask the user for their email or the store owner's email.** `email_domain` (resolved at `session_start` and again in GITHUB_SETUP, Section 5) is read opportunistically from already-configured `gh`/`git` identity, never solicited -- and only the domain half ever leaves that step. `account_name` is the one field that is directly solicited, and only from the ThemeMate operator about themselves, at most once per install, always skippable -- never the merchant's or a customer's name. Full email addresses, the merchant's contact email, and customer email or name in any form are not accepted by this pipeline at all: this is a shared, anonymous, cross-merchant/cross-agency sheet with no per-account access control, which is not a safe destination for anything that identifies a person other than the operator's own voluntary disclosure. The emit script enforces this for `email_domain` (rejects anything containing `@` or not domain-shaped) and drops any key it doesn't recognize.
+**Never ask the user for their email or the store owner's email.** `email_domain` (GITHUB_SETUP, Section 5) is read opportunistically from already-configured `gh`/`git` identity, never solicited -- and only the domain half ever leaves that step. Full email addresses, the merchant's contact email, and customer email in any form are not accepted by this pipeline at all: this is a shared, anonymous, cross-merchant/cross-agency sheet with no per-account access control, which is not a safe destination for anything that identifies a person. The emit script enforces this for `email_domain` (rejects anything containing `@` or not domain-shaped) and drops any key it doesn't recognize.
 
 A `session_start` with no matching `session_end` is expected and informative -- it is read downstream as an abandoned session. Do not attempt to detect or self-report abandonment.

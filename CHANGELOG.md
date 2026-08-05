@@ -14,6 +14,41 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## Infrastructure
 
+### [telemetry-automation] 2026-08-05 — Upsert the heartbeat sheet by install_id
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- `HEARTBEAT_COLUMNS` changes shape from a raw per-event slice (`received_at, ts, install_id, skill, skill_version, ...heartbeat_keys`) to a derived per-install summary: `install_id, first_seen, last_seen, initial_version, current_version, ping_count, ...heartbeat_keys`
+- `doPost`'s heartbeat branch now calls new `upsertHeartbeatRow_` instead of `appendRow_`: no existing row for an `install_id` -> insert with `first_seen = last_seen`, `initial_version = current_version`, `ping_count = 1`; existing row -> `last_seen`/`current_version` advance, `first_seen`/`initial_version` stay write-once, `ping_count` increments, `heartbeat_keys` fields use latest-non-blank-wins (same semantics `upsertRow_` already used for `events`)
+- `findRowBySessionId_` generalized to `findRowByValue_(sheet, col, value)` so both `upsertRow_` (keyed on `session_id`) and `upsertHeartbeatRow_` (keyed on `install_id`) share the same row-lookup helper instead of duplicating it
+- `skill-updater.sh`'s daily lock already guarantees at most one heartbeat per install per calendar day, so `ping_count` doubles as a distinct-days-active count without needing to retain the old per-day rows
+- Verified with a standalone Node simulation of the merge logic: write-once fields (`first_seen`/`initial_version`) hold across repeated pings, advancing fields (`last_seen`/`current_version`) update, `ping_count` increments, and independent `install_id`s don't collide
+- Migration note: an existing `heartbeat` tab written before this shipped is in the old per-event shape and won't fit the new columns -- rename/archive it before redeploying so `getOrCreateSheet_` creates a fresh tab (see `telemetry/README.md`)
+
+**`telemetry/apps-script/InstallRollup.gs`**
+- `processHeartbeatRollup_` now reads each install's single pre-aggregated heartbeat row directly (`first_seen`/`last_seen`/`initial_version`/`current_version`/`ping_count`) instead of scanning many historical per-day rows; `days_active` now comes from `ping_count`
+- `processRollupSheet_` renamed to `processEventsRollup_`, scoped to `events` only; the `activeDays` day-counting `Set` (used by both sheets previously) is dropped in favor of `ping_count`
+
+### [telemetry-automation] 2026-08-05 — Per-install rollup sheet, account_name field, heartbeat identity enrichment
+
+**`telemetry/schema.json`**
+- New `account_name` key in `accepted_keys`/`column_order` (free text, no enum -- same PII treatment as `feedback_note`/`exit_summary`)
+- New `heartbeat_keys` array (`email_domain`, `account_name`) -- the subset of session-oriented fields the daily heartbeat ping is also allowed to carry, keeping `HEARTBEAT_COLUMNS` schema-driven instead of hand-edited
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- `load_schema()` validates every `heartbeat_keys` entry is also in `accepted_keys`
+- `HEARTBEAT_COLUMNS` built from `heartbeat_keys` instead of a hardcoded list
+- Free-text PII regex backstop (drop on email-shaped or long-digit-run content) extended to cover `account_name`
+
+**`telemetry-emit.sh`**
+- `account_name` added to the hand-maintained `FREE_TEXT_KEYS` tuple (same client-side PII scrub as `feedback_note`/`exit_summary`)
+
+**`skill-updater.sh`**
+- The daily heartbeat call now also resolves `email_domain` (`gh api user` / `git config user.email`, domain-only) and `account_name` (from the local one-time-answer cache) and passes both to `telemetry-emit.sh heartbeat` -- no LLM involved, best-effort, so idle installs that never open a real ThemeMate session still carry an identity signal
+
+**`telemetry/apps-script/InstallRollup.gs`** (new, hand-maintained -- not touched by the generator)
+- `buildInstallRollup()` reads `events` and `heartbeat` and writes one row per `install_id` to a new `install_rollup` sheet: `first_seen`, `last_seen`, `initial_version`, `current_version`, `account_name`, `email_domain`, `git_org`, `role`, `platform`, `session_count`, `days_active`, outcome counts, `success_rate`, `error_rate`, `avg_turns`, `avg_session_duration_min`, `satisfaction_*`
+- Full overwrite on every run; exposed via a "Telemetry -> Rebuild Install Rollup" menu (`onOpen()`) and can be wired to a daily time-driven trigger
+
 ### [telemetry-automation] 2026-07-27 — Sync failure_category enum, avoid full-column scans
 
 **`telemetry/schema.json`**
@@ -90,9 +125,20 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## ThemeMate
 
-### [2.8.0] 2026-07-24: Turns, session duration, and exit summary telemetry
+### [2.9.0] 2026-08-05: Role/account_name caching, email_domain for every mode
 
 Current version.
+
+**Section 2 -- ROLES**
+- The "which Swym team" ask (rule 2, now rule 3) and the "Swym/agency/merchant" fallback ask (rule 5, now rule 6) previously fired every session with no memory of a prior answer. Both now cache their resolved value to `~/.claude/.thememate-role`, checked before either ask runs -- a returning user isn't asked again. An explicit in-session role statement (rule 1) always overwrites the cache. Context-inferred `agency`/`merchant` (rule 5, from "my client's store" vs "my store") is intentionally not cached -- that can legitimately vary session to session for the same person.
+
+**Section 14 -- TELEMETRY**
+- `email_domain` now resolves at `session_start` for every MODE (KNOWLEDGE, THEME_INSPECT, THEME_EDIT), not only THEME_EDIT sessions that reach `GITHUB_SETUP` -- same opportunistic `gh api user` / `git config user.email` lookup, just run unconditionally and earlier. `GITHUB_SETUP` still runs the same lookup as a fallback.
+- New `account_name` field: a voluntary, self-disclosed name or agency label, asked once ever per install (gated on `~/.claude/.thememate-account-name` not existing, cached like `role` above), combined into a single message with the role ask when both fire in the same (first-ever) session. Always skippable. Gets the same free-text PII backstop as `feedback_note`/`exit_summary` (dropped if it looks like an email or long digit run). This is a deliberate exception to "never PII" -- it identifies the ThemeMate operator, never a merchant or customer.
+
+### [2.8.0] 2026-07-24: Turns, session duration, and exit summary telemetry
+
+Superseded by 2.9.0. Archived at `versions/SKILL-2.8.0.md`.
 
 **Section 14 -- TELEMETRY**
 - New running counters tracked from `session_start` onward: `turns` (running count of user messages) and `session_duration_min` (elapsed minutes since `session_start`, computed from `$(date +%s)`)

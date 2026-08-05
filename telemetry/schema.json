@@ -21,7 +21,12 @@
     "git_repo",
     "pr_url",
     "preview_url",
-    "email_domain"
+    "email_domain",
+    "account_name"
+  ],
+  "heartbeat_keys": [
+    "email_domain",
+    "account_name"
   ],
   "enums": {
     "role": [
@@ -116,6 +121,7 @@
     "git_repo",
     "pr_url",
     "preview_url",
-    "email_domain"
+    "email_domain",
+    "account_name"
   ]
 }

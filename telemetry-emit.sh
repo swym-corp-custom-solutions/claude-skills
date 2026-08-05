@@ -53,7 +53,7 @@ SKILL_VERSION=$(grep -m1 "^  version:" "$HOME/.claude/skills/swym-thememate/SKIL
 TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null)
 
 # BEGIN GENERATED TELEMETRY SCHEMA - DO NOT EDIT MANUALLY
-SCHEMA_KEYS_JSON='["session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "turns", "session_duration_min", "exit_summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain"]'
+SCHEMA_KEYS_JSON='["session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "turns", "session_duration_min", "exit_summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain", "account_name"]'
 SCHEMA_ENUMS_JSON='{"role": ["swym_acq", "swym_success", "swym_support", "swym_staff", "agency", "merchant", "unknown"], "mode": ["KNOWLEDGE", "THEME_INSPECT", "THEME_EDIT"], "platform": ["shopify", "bigcommerce", "headless", "unknown"], "outcome": ["completed", "blocked", "error", "scope_rejected"], "failure_category": ["app_embed_hidden", "css_specificity_conflict", "snippet_removed_on_update", "json_template_priority", "callback_race_condition", "zindex_stacking", "hot_reload_stale", "non_theme_liquid_layout", "theme_access_denied", "shopify_cli_auth_failure", "push_failed", "out_of_scope", "browser_automation_failure", "sfl_cart_toggle_disabled", "bis_stale_variant_binding", "bis_custom_webhook_unreachable", "unsupported_feature_requested", "other"], "escalated_to": ["swym_engineering", "shopify_support", "bigcommerce_support", "none"], "satisfaction": ["positive", "neutral", "negative"], "feedback_reason": ["incorrect_output", "didnt_solve_issue", "too_slow", "unclear_explanation", "other"]}'
 SCHEMA_MAX_LEN='128'
 SCHEMA_VERSION='1'
@@ -73,17 +73,17 @@ keys_json, enums_json, max_len_str, schema_version_str = sys.argv[1:5]
 MAX_LEN = int(max_len_str)
 ALLOWED_KEYS = set(json.loads(keys_json))
 ENUMS = {k: set(v) for k, v in json.loads(enums_json).items()}
-# feedback_note (user-typed) and exit_summary (LLM-written) are the two free
-# text fields here that aren't a closed enum. This is a best-effort backstop,
-# not a guarantee: drop the whole value (rather than trying to redact in
-# place) if it looks like it contains an email address (any '@' at all,
-# including a partial local-part with no domain yet typed) or a long digit
-# run (phone/order number shaped).
+# feedback_note (user-typed), exit_summary (LLM-written), and account_name
+# (user-typed) are the free text fields here that aren't a closed enum. This
+# is a best-effort backstop, not a guarantee: drop the whole value (rather
+# than trying to redact in place) if it looks like it contains an email
+# address (any '@' at all, including a partial local-part with no domain yet
+# typed) or a long digit run (phone/order number shaped).
 PII_PATTERNS = (
     re.compile(r'@'),
     re.compile(r'\d{7,}'),
 )
-FREE_TEXT_KEYS = ('feedback_note', 'exit_summary')
+FREE_TEXT_KEYS = ('feedback_note', 'exit_summary', 'account_name')
 # email_domain must be a bare domain (e.g. 'acme.com'), never a full address --
 # this is the hard backstop behind the 'strip before @ and discard it' instruction
 # in SKILL.md, in case that step is ever skipped or done wrong.

@@ -26,7 +26,12 @@ const TELEMETRY_SCHEMA = {
     "git_repo",
     "pr_url",
     "preview_url",
-    "email_domain"
+    "email_domain",
+    "account_name"
+  ],
+  "heartbeat_keys": [
+    "email_domain",
+    "account_name"
   ],
   "enums": {
     "role": [
@@ -121,21 +126,27 @@ const TELEMETRY_SCHEMA = {
     "git_repo",
     "pr_url",
     "preview_url",
-    "email_domain"
+    "email_domain",
+    "account_name"
   ]
 };
-const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "turns", "session_duration_min", "exit_summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain"];
+const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "platform", "outcome", "failure_category", "escalated_to", "store_domain", "lines_written", "turns", "session_duration_min", "exit_summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain", "account_name"];
 const SHEET_NAME = 'events';
 const TOKEN_PROPERTY_KEY = 'THEMEMATE_TOKEN';
 
 // The daily `heartbeat` event (skill-updater.sh) is a fixed, session-less
 // install ping -- a reach/adoption signal, not a ThemeMate session. It never
-// carries session_id or any of the richer session fields, so it gets its own
-// sheet with a fixed minimal shape instead of cluttering `events` with
-// mostly-blank rows and instead of evolving alongside schema.json's
-// session-oriented accepted_keys/column_order.
+// carries session_id or any of the richer session fields (only the cheap,
+// no-LLM-required identity fields listed in schema.json's heartbeat_keys),
+// so it gets its own sheet instead of cluttering `events` with mostly-blank
+// rows and instead of evolving alongside schema.json's full session-oriented
+// accepted_keys/column_order. Upserted to one row per install_id (see
+// upsertHeartbeatRow_) -- first_seen/initial_version are write-once,
+// last_seen/current_version advance on every ping, ping_count increments.
+// skill-updater.sh's daily lock guarantees at most one ping per install per
+// calendar day, so ping_count doubles as a distinct-days-active count.
 const HEARTBEAT_SHEET_NAME = 'heartbeat';
-const HEARTBEAT_COLUMNS = ['received_at', 'ts', 'install_id', 'skill', 'skill_version'];
+const HEARTBEAT_COLUMNS = ["install_id", "first_seen", "last_seen", "initial_version", "current_version", "ping_count", "email_domain", "account_name"];
 
 function doPost(e) {
   try {
@@ -153,7 +164,7 @@ function doPost(e) {
     if (normalized.event === 'heartbeat') {
       const sheet = getOrCreateSheet_(HEARTBEAT_SHEET_NAME);
       const headers = ensureHeaders_(sheet, HEARTBEAT_COLUMNS);
-      appendRow_(sheet, headers, normalized);
+      upsertHeartbeatRow_(sheet, headers, normalized);
       return jsonResponse_(200, { ok: true });
     }
 
@@ -209,10 +220,10 @@ function normalizePayload_(payload) {
     // setting out[key] to '' here would blank a column a prior event in the
     // same session already populated.
     if (!value) continue;
-    // Defense in depth: telemetry-emit.sh already scrubs these two free-text
+    // Defense in depth: telemetry-emit.sh already scrubs these free-text
     // fields client-side, but the receiver shouldn't trust that a caller
     // went through the emit script rather than posting directly.
-    if ((key === 'feedback_note' || key === 'exit_summary') && (/@/.test(value) || /\d{7,}/.test(value))) continue;
+    if ((key === 'feedback_note' || key === 'exit_summary' || key === 'account_name') && (/@/.test(value) || /\d{7,}/.test(value))) continue;
     if (Object.prototype.hasOwnProperty.call(enums, key)) {
       if (!enums[key].includes(value)) continue;
     }
@@ -257,7 +268,7 @@ function upsertRow_(sheet, headers, payload) {
   const sessionCol = headers.indexOf('session_id');
   const existingRow = (sessionCol === -1 || !payload.session_id)
     ? -1
-    : findRowBySessionId_(sheet, sessionCol, payload.session_id);
+    : findRowByValue_(sheet, sessionCol, payload.session_id);
 
   if (existingRow === -1) {
     appendRow_(sheet, headers, payload);
@@ -276,14 +287,49 @@ function upsertRow_(sheet, headers, payload) {
   sheet.getRange(existingRow, 1, 1, lastCol).setValues([merged]);
 }
 
-function findRowBySessionId_(sheet, sessionCol, sessionId) {
+// One row per install_id, kept current instead of appended -- see the
+// HEARTBEAT_COLUMNS comment above for the field semantics.
+function upsertHeartbeatRow_(sheet, headers, payload) {
+  const idCol = headers.indexOf('install_id');
+  const existingRow = (idCol === -1 || !payload.install_id)
+    ? -1
+    : findRowByValue_(sheet, idCol, payload.install_id);
+
+  const now = payload.received_at || '';
+  const version = payload.skill_version || '';
+
+  if (existingRow === -1) {
+    const row = headers.map((h) => {
+      if (h === 'install_id') return payload.install_id;
+      if (h === 'first_seen' || h === 'last_seen') return now;
+      if (h === 'initial_version' || h === 'current_version') return version;
+      if (h === 'ping_count') return 1;
+      return Object.prototype.hasOwnProperty.call(payload, h) ? payload[h] : '';
+    });
+    sheet.appendRow(row);
+    return;
+  }
+
+  const lastCol = headers.length;
+  const currentValues = sheet.getRange(existingRow, 1, 1, lastCol).getValues()[0];
+  const merged = headers.map((h, i) => {
+    if (h === 'first_seen' || h === 'initial_version') return currentValues[i];
+    if (h === 'last_seen') return now;
+    if (h === 'current_version') return version || currentValues[i];
+    if (h === 'ping_count') return (Number(currentValues[i]) || 0) + 1;
+    return Object.prototype.hasOwnProperty.call(payload, h) ? payload[h] : currentValues[i];
+  });
+  sheet.getRange(existingRow, 1, 1, lastCol).setValues([merged]);
+}
+
+function findRowByValue_(sheet, col, value) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
   // TextFinder keeps the scan server-side instead of pulling the whole
-  // session_id column into the script runtime with getValues() -- matters
-  // once the sheet has a real number of rows.
-  const range = sheet.getRange(2, sessionCol + 1, lastRow - 1, 1);
-  const matches = range.createTextFinder(sessionId).matchEntireCell(true).findAll();
+  // column into the script runtime with getValues() -- matters once the
+  // sheet has a real number of rows.
+  const range = sheet.getRange(2, col + 1, lastRow - 1, 1);
+  const matches = range.createTextFinder(value).matchEntireCell(true).findAll();
   if (matches.length === 0) return -1;
   return matches[matches.length - 1].getRow();
 }
