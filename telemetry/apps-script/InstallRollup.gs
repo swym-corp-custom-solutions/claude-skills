@@ -52,6 +52,15 @@ const ROLLUP_COLUMNS = [
   'satisfaction_negative'
 ];
 
+// `row[col[name]] || ''` would coerce a legitimate falsy value (e.g. numeric
+// 0 for turns/ping_count) to an empty string, silently dropping it from
+// averages/counts. Explicit undefined/null check instead.
+function cellValue_(row, col, name) {
+  if (col[name] === undefined) return '';
+  const v = row[col[name]];
+  return (v === undefined || v === null) ? '' : String(v);
+}
+
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Telemetry')
@@ -86,9 +95,7 @@ function processEventsRollup_(installs, sheet) {
     const installId = String(row[col.install_id] || '');
     if (!installId) continue;
 
-    const getVal = function (name) {
-      return col[name] !== undefined ? String(row[col[name]] || '') : '';
-    };
+    const getVal = function (name) { return cellValue_(row, col, name); };
     const receivedAtRaw = getVal('received_at');
     const receivedAt = receivedAtRaw ? new Date(receivedAtRaw).getTime() : null;
     const skillVersion = getVal('skill_version');
@@ -144,9 +151,7 @@ function processHeartbeatRollup_(installs, sheet) {
     const installId = String(row[col.install_id] || '');
     if (!installId) continue;
 
-    const getVal = function (name) {
-      return col[name] !== undefined ? String(row[col[name]] || '') : '';
-    };
+    const getVal = function (name) { return cellValue_(row, col, name); };
     const firstSeenRaw = getVal('first_seen');
     const lastSeenRaw = getVal('last_seen');
     const firstSeen = firstSeenRaw ? new Date(firstSeenRaw).getTime() : null;

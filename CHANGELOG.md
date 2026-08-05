@@ -14,6 +14,21 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## Infrastructure
 
+### [telemetry-automation] 2026-08-05 — Code review fixes: falsy-0 handling, server-side email_domain check, SHA-cache correctness
+
+Addresses Copilot review findings on PR #17.
+
+**`telemetry/apps-script/InstallRollup.gs`**
+- New shared `cellValue_()` replaces two duplicated `getVal` closures that used `row[col[name]] || ''` -- that coerced a legitimate falsy cell value (e.g. `turns=0`, `ping_count=0`) to an empty string, silently excluding it from averages/counts. Explicit undefined/null check instead.
+
+**`scripts/generate_telemetry_artifacts.py`** / **`telemetry/apps-script/Code.gs`** (generated)
+- `normalizePayload_` now validates `email_domain`'s shape server-side (mirrors `telemetry-emit.sh`'s `EMAIL_DOMAIN_PATTERN`) instead of relying solely on the client-side check -- `doPost` already documents that it can't trust a caller went through the emit script, so a direct POST to the web app could otherwise store a full email address in that column.
+
+**`skill-updater.sh`**
+- `sync_if_sha_changed`'s cache lookups switched from `grep "^$name="` to `awk -F= -v n="$name" '$1==n'` -- `$name` (e.g. `telemetry-emit.sh`) contains a literal `.`, a regex metacharacter grep would otherwise interpret as "any character," risking a false match against an unrelated cache line.
+- `sync_file_from_repo` now returns non-zero on a failed fetch (empty response), and `sync_if_sha_changed` only writes the new SHA to the cache when the fetch actually succeeded -- previously a transient `gh api` failure on the day the SHA changed would still cache that SHA, making the real update look "already applied" and permanently skipping it.
+- Verified with a stubbed test: a failed fetch leaves the cache untouched (retries next run); a successful fetch on the next attempt caches correctly.
+
 ### [install] 2026-08-05 — Auto-update telemetry-emit.sh and skill-updater.sh itself
 
 `skill-updater.sh`'s daily check only ever re-pulled `SKILL.md` files -- `skill-updater.sh` and `telemetry-emit.sh` were installed once by `install.sh` and never touched again, so schema/PII changes to those two files (e.g. the `exit_summary`->`summary` rename below) silently never reached an existing install without a manual re-run of `install.sh`.

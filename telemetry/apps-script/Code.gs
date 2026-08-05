@@ -205,6 +205,12 @@ function isAuthorized_(payload) {
   return String(payload.token || '') === String(configured);
 }
 
+// Mirrors telemetry-emit.sh's EMAIL_DOMAIN_PATTERN -- doPost has no way to
+// know a caller went through the emit script rather than posting directly,
+// so the receiver enforces the same domain-only shape independently rather
+// than trusting the client-side check alone.
+const EMAIL_DOMAIN_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+
 function normalizePayload_(payload) {
   const maxLen = Number(TELEMETRY_SCHEMA.max_len || 128);
   const accepted = new Set(TELEMETRY_SCHEMA.accepted_keys || []);
@@ -236,6 +242,7 @@ function normalizePayload_(payload) {
     // fields client-side, but the receiver shouldn't trust that a caller
     // went through the emit script rather than posting directly.
     if ((key === 'feedback_note' || key === 'summary' || key === 'account_name' || key === 'usecase') && (/@/.test(value) || /\d{7,}/.test(value))) continue;
+    if (key === 'email_domain' && (/@/.test(value) || !EMAIL_DOMAIN_PATTERN.test(value))) continue;
     if (Object.prototype.hasOwnProperty.call(enums, key)) {
       if (!enums[key].includes(value)) continue;
     }

@@ -32,19 +32,26 @@ SYNC_SHA_CACHE="$HOME/.claude/.thememate-sync-shas"
 # already-running bash process keeps reading its already-open file
 # descriptor's original inode content regardless -- POSIX rename semantics,
 # not something specific to this script.
+# Returns non-zero if the fetch itself failed (empty response), so callers
+# can tell "confirmed up to date" apart from "don't know, try again later".
 sync_file_from_repo() {
   local remote_path="$1" local_path="$2"
   local tmp
   tmp=$(mktemp)
   gh api "repos/$REPO/contents/$remote_path?ref=main" \
     --jq '.content | gsub("\n";"") | @base64d' > "$tmp" 2>/dev/null
-  if [ -s "$tmp" ] && ! cmp -s "$tmp" "$local_path" 2>/dev/null; then
+  if [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! cmp -s "$tmp" "$local_path" 2>/dev/null; then
     mv "$tmp" "$local_path"
     chmod +x "$local_path"
     echo "[skill-updater] updated $(basename "$local_path")"
   else
     rm -f "$tmp"
   fi
+  return 0
 }
 
 # sync_file_from_repo always pays for a full content fetch, whether or not
@@ -57,16 +64,20 @@ sync_file_from_repo() {
 sync_if_sha_changed() {
   local name="$1" local_path="$2"
   local remote_sha cached_sha
-  remote_sha=$(printf '%s\n' "$REMOTE_SHAS" | grep "^$name=" | cut -d= -f2)
+  # awk with an exact field match, not grep -- $name (e.g. "telemetry-emit.sh")
+  # contains a literal `.`, a regex metacharacter grep would otherwise interpret.
+  remote_sha=$(printf '%s\n' "$REMOTE_SHAS" | awk -F= -v n="$name" '$1==n{print $2}')
   [ -n "$remote_sha" ] || return 0
-  cached_sha=$(grep "^$name=" "$SYNC_SHA_CACHE" 2>/dev/null | cut -d= -f2)
+  cached_sha=$(awk -F= -v n="$name" '$1==n{print $2}' "$SYNC_SHA_CACHE" 2>/dev/null)
   [ "$remote_sha" = "$cached_sha" ] && return 0
-  sync_file_from_repo "$name" "$local_path"
-  # Cache the new SHA regardless of whether content actually changed --
-  # sync_file_from_repo's own cmp is the correctness backstop; this cache
-  # exists purely to skip tomorrow's fetch when nothing changed.
-  { grep -v "^$name=" "$SYNC_SHA_CACHE" 2>/dev/null; echo "$name=$remote_sha"; } > "$SYNC_SHA_CACHE.tmp" 2>/dev/null
-  mv "$SYNC_SHA_CACHE.tmp" "$SYNC_SHA_CACHE" 2>/dev/null
+  # Only cache the new SHA if the fetch actually succeeded -- caching it
+  # unconditionally would mean a transient gh api failure on the day the SHA
+  # changed permanently skips the real update (remote and cached SHA would
+  # match from then on, even though the fetch never actually applied).
+  if sync_file_from_repo "$name" "$local_path"; then
+    { awk -F= -v n="$name" '$1!=n' "$SYNC_SHA_CACHE" 2>/dev/null; echo "$name=$remote_sha"; } > "$SYNC_SHA_CACHE.tmp" 2>/dev/null
+    mv "$SYNC_SHA_CACHE.tmp" "$SYNC_SHA_CACHE" 2>/dev/null
+  fi
 }
 
 # --- Telemetry heartbeat (deterministic, no gh required) ---------------
