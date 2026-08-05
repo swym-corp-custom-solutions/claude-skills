@@ -149,9 +149,18 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## ThemeMate
 
-### [2.10.0] 2026-08-05: usecase/summary/usecase_met, feature and vertical in telemetry
+### [2.11.0] 2026-08-05: Self-heal skill-updater.sh/telemetry-emit.sh on existing installs
 
 Current version.
+
+**Section 14 -- TELEMETRY**
+- New self-heal check, once per session before anything else in this section: `grep -q "sync_if_sha_changed" ~/.claude/skill-updater.sh`. If that fails (missing, or predates the self-update mechanism added to `skill-updater.sh`), fetch fresh copies of `skill-updater.sh` and `telemetry-emit.sh` directly from the repo via `gh api` and overwrite the local ones.
+- Closes a bootstrap gap: `skill-updater.sh`'s own daily self-update logic can only run if it's already the code present on disk -- an existing install stuck on the pre-self-update version had no path to ever pick up that capability without someone manually re-running `install.sh`. This check lives in `SKILL.md` specifically because `SKILL.md` is the one file that reliably already auto-updates on every existing install.
+- Respects the `.thememate-telemetry-optout` marker for the `telemetry-emit.sh` half, same as `skill-updater.sh`'s own sync does. Self-limiting: once `skill-updater.sh` is current, the grep passes immediately on every future session and this does nothing further.
+
+### [2.10.0] 2026-08-05: usecase/summary/usecase_met, feature and vertical in telemetry
+
+Superseded by 2.11.0. Archived at `versions/SKILL-2.10.0.md`.
 
 **Section 14 -- TELEMETRY**
 - `exit_summary` renamed to `summary`. Previously only sent optionally at `session_heartbeat`/`session_end`; now always seeded at `session_start` too, refined at `session_heartbeat`, finalized at `session_end`. Existing `heartbeat`/`events` sheets need the `exit_summary` header cell manually renamed to `summary` so history and new data land in the same column (see `telemetry/README.md`).
