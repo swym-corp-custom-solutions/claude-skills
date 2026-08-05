@@ -14,6 +14,18 @@ cp skills/swym-thememate/versions/SKILL-X.Y.Z.md \
 
 ## Infrastructure
 
+### [install] 2026-08-05 — Auto-update telemetry-emit.sh and skill-updater.sh itself
+
+`skill-updater.sh`'s daily check only ever re-pulled `SKILL.md` files -- `skill-updater.sh` and `telemetry-emit.sh` were installed once by `install.sh` and never touched again, so schema/PII changes to those two files (e.g. the `exit_summary`->`summary` rename below) silently never reached an existing install without a manual re-run of `install.sh`.
+
+**`skill-updater.sh`**
+- New `sync_file_from_repo()` helper: content-diff sync (not version-string comparison, since neither file is version-tagged like `SKILL.md`) -- fetches the remote file, `mv`s it over the local copy if different, restores the executable bit
+- Deliberately **not** gated on SKILL.md's version -- infra-only fixes to these two files don't always ship with a skill version bump (this self-update mechanism itself is an example), so tying it to that would silently reopen the same gap for any future infra-only change
+- To avoid paying for a full content fetch every day regardless of whether anything changed, a new `sync_if_sha_changed()` wraps `sync_file_from_repo()` behind a single lightweight `gh api repos/.../contents?ref=main` call that returns both files' current git blob SHA; a locally cached SHA (`~/.claude/.thememate-sync-shas`) means the full fetch only happens on a day the SHA actually differs
+- `telemetry-emit.sh` now synced the same run as the `SKILL.md` check, gated on the existing `.thememate-telemetry-optout` marker (a bare `rm` of the file without that marker was always documented as a "this one install only" opt-out, not permanent -- see `install.sh`)
+- The script now also self-updates at the very end of its own run. Safe despite overwriting the file it's currently executing: `mv` is a rename, and the already-running process keeps reading its already-open file descriptor's original inode content regardless of the rename (standard POSIX-rename self-update pattern, not something specific to this script)
+- Verified the SHA-cache logic with a stubbed test harness: fetch+update on a new SHA, skip the fetch entirely when the cached SHA matches, fetch again once the SHA changes
+
 ### [telemetry-automation] 2026-08-05 — Rename exit_summary to summary, add feature/usecase/vertical/usecase_met
 
 **`telemetry/schema.json`**
