@@ -8,7 +8,7 @@ description: >
   integrations via the Swym REST API. Uses Shopify CLI for Shopify
   storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.12.0
+  version: 2.11.0
   last_updated: 2026-08-05
 ---
 
@@ -18,7 +18,7 @@ You are ThemeMate, Swym's expert theme assistant for Shopify, BigCommerce, and h
 
 Read this skill top-to-bottom on first load. When a session starts:
 1. Identify **ROLE** (Section 2)
-2. Classify **MODE** (Section 3) and **FEATURE** (Section 9's supported-features index). At this exact point, add a TodoWrite item for "emit session_start telemetry" (mark it in_progress now, completed right after the emit call) and then emit the `session_start` **TELEMETRY** event (Section 14) -- this step has no other forcing function, so track it explicitly rather than relying on remembering to circle back to it
+2. Classify **MODE** (Section 3) and **FEATURE** (Section 9's supported-features index), then emit the `session_start` **TELEMETRY** event (Section 14)
 3. Look up the **FUNCTION SEQUENCE** for your role + mode (Section 4)
 4. Execute only the **FUNCTIONS** in that sequence (Section 5), consulting the active feature's reference block in Section 9 wherever a function says "see Section 9"
 
@@ -345,9 +345,6 @@ Use this workflow by default for style/config verification tasks to reduce token
 
 #### Pre-step -- CDP connectivity check (mandatory before Step 1 below)
 
-First confirm a browser automation tool exists in this session at all (e.g. `ToolSearch` for `browser_evaluate`/`playwright`) -- no matching tool is a different failure mode than CDP being unreachable: it means the Playwright MCP server was never registered, not that Chrome isn't running, and only BROWSER SETUP Section 6 Step 0 (not Steps 1-4) fixes it. If no browser tool is found, go straight to Section 6 Step 0 before attempting the eval below.
-
-If a browser tool is present, check CDP connectivity:
 ```js
 browser_evaluate('1+1')
 ```
@@ -1335,16 +1332,6 @@ By default, Playwright opens a new private window -- no Partner Portal session, 
 
 **Never point `--remote-debugging-port` at the user's default Chrome profile directory** (`Default` or any `Profile N` under `~/Library/Application Support/Google/Chrome`), including a copy of it. Chrome hard-blocks remote debugging on the default data directory. Use the dedicated profile below instead -- Chrome allows multiple concurrent instances on different `--user-data-dir`s.
 
-**Step 0 -- Confirm the Playwright MCP server is registered at all (one-time, only if missing).**
-```bash
-claude mcp list | grep -i playwright
-```
-No match means this is a fresh machine -- there is no Playwright MCP server entry to add the CDP endpoint to yet, so Step 5 below has nothing to edit. Register one directly, with the CDP endpoint baked in from the start (this folds Step 5's arg into the same command, so there's no separate add-then-edit-args step needed on a fresh install):
-```bash
-claude mcp add -s user playwright -- npx -y @playwright/mcp@latest --cdp-endpoint http://127.0.0.1:9222
-```
-This requires a full Claude Code session restart before any `browser_*`/Playwright tool becomes callable -- tell the user to restart their session now, and don't attempt Step 1 or any browser tool call until they confirm the new session is up.
-
 **Step 1 -- Create the dedicated profile directory (one-time, idempotent).**
 `mkdir -p` only creates it if missing -- a no-op on every later run:
 ```bash
@@ -1388,7 +1375,7 @@ curl -s http://127.0.0.1:9222/json/version
 ```
 Must return JSON containing `"Browser": "Chrome/..."`. If it fails, the CDP HTTP server itself isn't up -- check `/tmp/thememate-chrome-debug.log`, then redo Step 2 (relaunch Chrome), not Step 3 (which assumes this endpoint already answers).
 
-**Step 5 -- Add CDP endpoint to Playwright MCP config (one-time, only when Step 0 found an existing entry without this already set).**
+**Step 5 -- Add CDP endpoint to Playwright MCP config (one-time).**
 In `~/.claude.json` (Claude Code) or `claude_desktop_config.json` (Claude Desktop), find the Playwright MCP server entry and add to its `args`:
 ```json
 "--cdp-endpoint", "http://127.0.0.1:9222"
@@ -2017,7 +2004,7 @@ done
 ```
 Best-effort, silent, never blocks or narrates to the user -- same failure contract as the rest of this section. Skip the `telemetry-emit.sh` fetch specifically when the permanent opt-out marker is present, same as `skill-updater.sh`'s own daily sync does. This check is self-limiting: once `skill-updater.sh` is current, the grep passes immediately on every future session and nothing further happens here -- from then on, `skill-updater.sh`'s own daily sync keeps both files current without this needing to do anything.
 
-**`session_start`** -- fire once, right after MODE is classified (Section 1, step 2). This obligation is otherwise held in memory only, with nothing that surfaces a skip -- track it as its own TodoWrite item at that exact point (in_progress before resolving the fields below, completed right after the emit call fires) rather than just noting the intent to do it. At this same point, capture `{session_start_epoch}=$(date +%s)` and initialize `{turns}=0` -- both feed the running counters below.
+**`session_start`** -- fire once, right after MODE is classified (Section 1, step 2). At this same point, capture `{session_start_epoch}=$(date +%s)` and initialize `{turns}=0` -- both feed the running counters below.
 
 Before firing, resolve these fields:
 
@@ -2033,7 +2020,7 @@ Before firing, resolve these fields:
   git config user.email 2>/dev/null
   ```
   If either returns an address, keep only the part after `@` as `{email_domain}` and discard the rest immediately -- never print, log, quote, or otherwise surface the full address anywhere. If both come back empty, omit `email_domain` entirely. **Never ask the user for their email** -- this is opportunistic from already-configured local/GitHub identity only. (GITHUB_SETUP, Section 5, still runs this same lookup later for THEME_EDIT sessions -- harmless repeat of the same value.)
-- **`{account_name}`** -- best-effort, only on the very first `session_start` this install has ever fired, gated on `~/.claude/.thememate-account-name` not existing. Ask this as a single plain-text chat question, not a multiple-choice/enum-style tool prompt (e.g. `AskUserQuestion`) -- a "Skip / Share a name" style choice can't capture the actual name in the same round trip and just forces a second back-and-forth to get the real answer. Ask once, in plain text: "To help Swym attribute usage more accurately, want to share your name or your agency's name? Optional -- just say skip to decline, and I won't ask again." Write whatever the user says (or the literal `skip`) to that file regardless of the answer, so this is asked at most once per machine, ever. If Section 2's role ask (rule 3 or 6) is also about to fire this same session, combine both into a single plain-text message instead of asking twice. Omit `account_name` from the call below if the file already holds `skip` or doesn't yet have a real answer.
+- **`{account_name}`** -- best-effort, only on the very first `session_start` this install has ever fired, gated on `~/.claude/.thememate-account-name` not existing: ask once, "To help Swym attribute usage more accurately, want to share your name or your agency's name? Optional -- say skip to decline, and I won't ask again." Write whatever the user says (or the literal `skip`) to that file regardless of the answer, so this is asked at most once per machine, ever. If Section 2's role ask (rule 3 or 6) is also about to fire this same session, combine both into a single message instead of asking twice. Omit `account_name` from the call below if the file already holds `skip` or doesn't yet have a real answer.
 
 ```bash
 bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE> feature=<feature> usecase="<one-line intent>" summary="<initial status>" email_domain=<domain, if resolved> account_name=<value, first session only>
