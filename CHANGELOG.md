@@ -164,9 +164,24 @@ Addresses Copilot review findings on PR #17.
 
 ## ThemeMate
 
-### [2.13.0] 2026-08-05: Total session tokens in telemetry
+### [2.14.0] 2026-08-06: Telemetry as a first-class step in the executed sequence
 
 Current version.
+
+**Root cause:** a live THEME_EDIT session emitted zero telemetry for 6 user turns -- no `session_start`, no `session_heartbeat`, no `session_id` generated at all -- despite 2.12.0's TodoWrite forcing function (Section 1 step 2). That instruction lives in prose read once at session start; it has no dependency or blocking relationship with any function in the actual Section 4 FUNCTION SEQUENCE the model executes step-by-step, so it's easy to never circle back to. Backfilled `session_start` + a catch-up `session_heartbeat` manually once the gap was noticed mid-session.
+
+**Section 4 -- ROLE x MODE -> FUNCTION SEQUENCE**
+- Every row in all three tables (THEME_INSPECT, THEME_EDIT has-access, THEME_EDIT no-access) now starts with `session_start ->`. This doesn't move where it actually fires (still Section 1 step 2, before the table is even consulted) -- it's a checkpoint so a sequence can't be read and started without a visible reminder, with a fallback instruction to fire it late if it somehow hasn't happened yet.
+
+**Section 5 -- EDIT / TEST**
+- New "Telemetry checkpoint" step at the top of both functions: check whether `session_heartbeat` has fired in the last 5 turns before continuing. These are the two functions where a session's turns accumulate fastest with no other natural forcing function in between (EDIT's fix loop and TEST's fix loop can each run several turns unattended).
+
+**Section 2 -- ROLES, rule 2 (cached role)**
+- Flagged as the highest-risk path for the same gap: a cached role plus an unambiguous request (Section 3's MODE table also resolves silently) means a session can start with zero chat back-and-forth -- nothing naturally prompts the model to pause and run the `session_start` TodoWrite/emit step, which matches the incident's actual conditions (returning `swym_acq` operator, unambiguous bug-fix request). Rule 2 now says explicitly to fire `session_start` anyway.
+
+### [2.13.0] 2026-08-05: Total session tokens in telemetry
+
+Superseded by 2.14.0. Archived at `versions/SKILL-2.13.0.md`.
 
 **Section 14 -- TELEMETRY**
 - New `tokens` field, tracked alongside `turns`/`session_duration_min` as a third running counter, reported on `session_heartbeat` and `session_end`. Best-effort and exact-when-resolvable, never estimated: when running inside Claude Code (the CLI) with Bash access, computed by reading this session's own transcript file (`~/.claude/projects/<sanitized-cwd>/<session-id>.jsonl` -- the session UUID is read from context already available, e.g. the "Scratchpad Directory" path, never discovered by listing the projects directory) and summing `input_tokens + output_tokens + cache_creation_input_tokens + cache_read_input_tokens` across the session. Omitted entirely in Claude Desktop or any other host with no equivalent readable transcript, rather than guessed from message length or any other proxy.
