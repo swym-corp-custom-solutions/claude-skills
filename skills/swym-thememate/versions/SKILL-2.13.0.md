@@ -8,8 +8,8 @@ description: >
   integrations via the Swym REST API. Uses Shopify CLI for Shopify
   storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.14.0
-  last_updated: 2026-08-06
+  version: 2.13.0
+  last_updated: 2026-08-05
 ---
 
 # ThemeMate
@@ -73,7 +73,7 @@ Identify role once at the start of every session. Hold for the full session. Onc
 
 0. If `userEmail` is not available in session context, skip rule 3 entirely -- rely only on rules 1, 2, 4, and 5.
 1. User explicitly states a role this session -> use it, and overwrite `~/.claude/.thememate-role` with it. An explicit statement always wins over a cached value.
-2. Else, if `~/.claude/.thememate-role` exists and is non-empty -> use that cached value directly and skip rules 3 and 6 below (no ask). This is the path with the highest risk of skipping `session_start` (Section 1 step 2, Section 14): a cached role plus an unambiguous request (Section 3's MODE table resolves without asking too) means the whole session can start with zero chat back-and-forth to naturally trigger the TodoWrite/emit step. Fire it anyway, explicitly, even though nothing here required a reply from the user.
+2. Else, if `~/.claude/.thememate-role` exists and is non-empty -> use that cached value directly and skip rules 3 and 6 below (no ask).
 3. `userEmail` ends in `@swymcorp.com` -> Swym staff. [Only evaluate if `userEmail` is present and rule 2 didn't already resolve a cached role.] Ask once: "Which Swym team -- Advance Customisation Queue (ACQ), Success, Support, or other?" Write the resolved team to `~/.claude/.thememate-role`. (If Section 14's one-time `account_name` prompt is also about to fire this session, ask both in one combined message rather than two back-to-back questions.)
 4. Context clues (only after Swym staff confirmed): merchant requesting custom JS / API / non-default UI -> `swym_acq`; demo for a prospect / merchant onboarding / account health -> `swym_success`; diagnosing a merchant issue / support ticket -> `swym_support`.
 5. "my client's store" -> `agency`; "my store" -> `merchant`. Not cached -- the same person can reasonably work on their own store one session and a client's store the next.
@@ -286,37 +286,35 @@ Both paths end with: **preview URL shared + code snippets if needed.**
 
 Use this table to find the function call order for your session. Then read only those functions in Section 5.
 
-Every row below starts with `session_start`. This is a checkpoint, not a second emission: Section 1 step 2 is where it actually fires, right after MODE is classified, before you ever reach this table. It's repeated as the first node here so a sequence can't be read and started without a visible reminder that it's supposed to have already happened -- if it somehow hasn't (e.g. resuming a session, or Section 1 step 2 got skipped), fire it now, before BRAND_DISCOVER, using the fields and command in Section 14.
-
 ### THEME_INSPECT
 
 | Role | Function sequence |
 |---|---|
-| swym_acq | session_start -> BRAND_DISCOVER -> THEME_PULL -> AUDIT (12 greps) |
-| swym_success | session_start -> BRAND_DISCOVER -> THEME_PULL -> AUDIT (12 greps) |
-| swym_support | session_start -> BRAND_DISCOVER -> THEME_PULL (fresh CLI) -> AUDIT (12 greps) -> DIAGNOSTIC_SUMMARY |
-| agency | session_start -> BRAND_DISCOVER -> THEME_PULL -> AUDIT |
-| merchant | session_start -> BRAND_DISCOVER -> THEME_PULL -> AUDIT |
+| swym_acq | BRAND_DISCOVER -> THEME_PULL -> AUDIT (12 greps) |
+| swym_success | BRAND_DISCOVER -> THEME_PULL -> AUDIT (12 greps) |
+| swym_support | BRAND_DISCOVER -> THEME_PULL (fresh CLI) -> AUDIT (12 greps) -> DIAGNOSTIC_SUMMARY |
+| agency | BRAND_DISCOVER -> THEME_PULL -> AUDIT |
+| merchant | BRAND_DISCOVER -> THEME_PULL -> AUDIT |
 
 ### THEME_EDIT -- has access (THEME_PULL succeeds)
 
 | Role | Function sequence |
 |---|---|
-| swym_acq | session_start -> BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
-| swym_success | session_start -> BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
-| swym_support | session_start -> BRAND_DISCOVER -> THEME_PULL -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
-| agency | session_start -> BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
-| merchant | session_start -> BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> EDIT -> TEST -> HANDOFF |
+| swym_acq | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
+| swym_success | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
+| swym_support | BRAND_DISCOVER -> THEME_PULL -> AUDIT -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
+| agency | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> IMPLEMENTATION_TYPE -> PLAN -> LOCAL_GIT_INIT -> EDIT -> TEST -> PUBLISH_CHOICE -> [GITHUB_SETUP -> PR_FLOW | HANDOFF] |
+| merchant | BRAND_DISCOVER -> THEME_PULL -> PREREQUISITES -> AUDIT -> PLAN -> EDIT -> TEST -> HANDOFF |
 
 ### THEME_EDIT -- no access (THEME_PULL fails)
 
 | Role | Function sequence |
 |---|---|
-| swym_acq | session_start -> BRAND_DISCOVER -> VISUAL_EXTRACT -> IMPLEMENTATION_TYPE -> PLAN -> EDIT (demo store) -> TEST -> DEMO_PUSH -> [HANDOFF on confirm] |
-| swym_success | session_start -> BRAND_DISCOVER -> VISUAL_EXTRACT -> PLAN -> EDIT (demo store) -> TEST -> DEMO_PUSH -> [HANDOFF on confirm] |
-| swym_support | session_start -> BRAND_DISCOVER -> DIAGNOSTIC_SUMMARY (file access required for fix -- cannot continue) |
-| agency | session_start -> BRAND_DISCOVER -> block ("Need client theme access to continue") |
-| merchant | session_start -> BRAND_DISCOVER -> NO_CODE_CSS_PATH (CSS requests) or block (structural changes) |
+| swym_acq | BRAND_DISCOVER -> VISUAL_EXTRACT -> IMPLEMENTATION_TYPE -> PLAN -> EDIT (demo store) -> TEST -> DEMO_PUSH -> [HANDOFF on confirm] |
+| swym_success | BRAND_DISCOVER -> VISUAL_EXTRACT -> PLAN -> EDIT (demo store) -> TEST -> DEMO_PUSH -> [HANDOFF on confirm] |
+| swym_support | BRAND_DISCOVER -> DIAGNOSTIC_SUMMARY (file access required for fix -- cannot continue) |
+| agency | BRAND_DISCOVER -> block ("Need client theme access to continue") |
+| merchant | BRAND_DISCOVER -> NO_CODE_CSS_PATH (CSS requests) or block (structural changes) |
 
 ---
 
@@ -872,10 +870,6 @@ All EDIT work happens on this feature branch. No remote is configured here -- th
 **Called by:** THEME_EDIT (after PLAN + user confirmation).
 **Works on:** Feature branch in merchant theme (has-access path) OR demo store base theme (no-access path).
 
-#### Telemetry checkpoint (mandatory, before Step A)
-
-EDIT is where a session's turns pile up fastest -- check now: has `session_heartbeat` fired in the last 5 turns (Section 14)? If not, fire it now with an updated `summary` before writing any file.
-
 #### Read-before-write discipline
 
 ```
@@ -949,10 +943,6 @@ git -C ./<slug> commit -m "feat: <description>"
 
 **Purpose:** Local browser validation. Confirm feature works. Catch regressions. Roll back on persistent failure.
 **Called by:** THEME_EDIT (after EDIT).
-
-#### Telemetry checkpoint (mandatory, before Step 1)
-
-Same check as EDIT's: has `session_heartbeat` fired in the last 5 turns (Section 14)? If not, fire it now with an updated `summary` before starting validation -- the fix loop below can run several turns on its own with no other checkpoint in between.
 
 ```bash
 shopify theme dev --store <merchant>.myshopify.com --path ./<slug>
