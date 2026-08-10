@@ -37,7 +37,20 @@ INSTALL_ID_FILE="$HOME/.claude/.thememate-install-id"
 # failed/truncated" -- either way, regenerate rather than ship a blank id.
 if [ ! -s "$INSTALL_ID_FILE" ]; then
   mkdir -p "$(dirname "$INSTALL_ID_FILE")" 2>/dev/null
-  python3 -c "import uuid; print(uuid.uuid4())" > "$INSTALL_ID_FILE" 2>/dev/null
+  # Write-then-rename, not a direct `>` redirect: found live while testing
+  # the fallback-queue fix below -- two ThemeMate sessions both hitting a
+  # brand-new machine's very first telemetry call at once previously raced
+  # on a plain truncating write to this same path, which could hand a
+  # concurrent reader a partial/empty file. `mv` within the same directory
+  # is an atomic rename, so every reader always sees either the old (absent)
+  # or a fully-written new file, never a torn one. `[ -n "$INSTALL_ID" ] ||
+  # exit 0` below silently drops the whole event on a blank read -- this was
+  # a real, reproducible way to lose an event with nothing to show for it.
+  TMP_INSTALL_ID=$(mktemp "${INSTALL_ID_FILE}.XXXXXX" 2>/dev/null)
+  if [ -n "$TMP_INSTALL_ID" ]; then
+    python3 -c "import uuid; print(uuid.uuid4())" > "$TMP_INSTALL_ID" 2>/dev/null
+    mv "$TMP_INSTALL_ID" "$INSTALL_ID_FILE" 2>/dev/null
+  fi
 fi
 INSTALL_ID=$(cat "$INSTALL_ID_FILE" 2>/dev/null)
 [ -n "$INSTALL_ID" ] || exit 0
@@ -254,12 +267,27 @@ chmod 600 "$LOG_FILE" "${LOG_FILE}.lock" 2>/dev/null
 # across repeated live tests against production where -L failed every time.
 (
   python3 -c "
-import json, subprocess, sys
+import fcntl, json, subprocess, sys
 from pathlib import Path
 
 endpoint, payload_json, fallback_file = sys.argv[1:4]
 FALLBACK_CAP = 1000
 MAX_DRAIN = 25
+FALLBACK_LOCK = fallback_file + '.lock'
+
+# save_fallback/drain_fallback are both a read-modify-write of the whole
+# queue file -- without a lock, two ThemeMate sessions failing to deliver at
+# the same time (the common case: a cold Apps Script instance affects every
+# concurrent caller at once) can clobber each other's append, silently
+# dropping a queued event and undermining the exact no-data-miss goal this
+# queue exists for. Held for the whole drain loop, including the network
+# calls inside it, not just the file I/O -- releasing it between items would
+# let a concurrent save_fallback() interleave and get lost when drain's
+# eventual write reflects only the snapshot it started with.
+def _fallback_lock():
+    lf = open(FALLBACK_LOCK, 'a')
+    fcntl.flock(lf, fcntl.LOCK_EX)
+    return lf
 
 def _run_curl(args, input_bytes=None, timeout=15):
     result = subprocess.run(args, input=input_bytes, capture_output=True, timeout=timeout + 3)
@@ -293,39 +321,49 @@ def looks_ok(body):
 
 def save_fallback(line):
     try:
-        p = Path(fallback_file)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        lines = p.read_text().splitlines() if p.is_file() else []
-        lines.append(line)
-        p.write_text('\n'.join(lines[-FALLBACK_CAP:]) + '\n')
-        p.chmod(0o600)
+        lf = _fallback_lock()
+        try:
+            p = Path(fallback_file)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            lines = p.read_text().splitlines() if p.is_file() else []
+            lines.append(line)
+            p.write_text('\n'.join(lines[-FALLBACK_CAP:]) + '\n')
+            p.chmod(0o600)
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
+            lf.close()
     except Exception:
         pass
 
 def drain_fallback():
     try:
-        p = Path(fallback_file)
-        if not p.is_file():
-            return
-        lines = [ln for ln in p.read_text().splitlines() if ln.strip()]
-        sent = 0
-        for i, line in enumerate(lines):
-            if sent >= MAX_DRAIN:
-                break
-            try:
-                ok = looks_ok(post(line.encode('utf-8')))
-            except Exception:
-                ok = False
-            if not ok:
-                break
-            sent += 1
-            # Truncate after EACH delivery, not after the whole loop -- an
-            # interrupted drain must not re-send what it already delivered.
-            rest = lines[i + 1:]
-            if rest:
-                p.write_text('\n'.join(rest) + '\n')
-            elif p.is_file():
-                p.unlink()
+        lf = _fallback_lock()
+        try:
+            p = Path(fallback_file)
+            if not p.is_file():
+                return
+            lines = [ln for ln in p.read_text().splitlines() if ln.strip()]
+            sent = 0
+            for i, line in enumerate(lines):
+                if sent >= MAX_DRAIN:
+                    break
+                try:
+                    ok = looks_ok(post(line.encode('utf-8')))
+                except Exception:
+                    ok = False
+                if not ok:
+                    break
+                sent += 1
+                # Truncate after EACH delivery, not after the whole loop -- an
+                # interrupted drain must not re-send what it already delivered.
+                rest = lines[i + 1:]
+                if rest:
+                    p.write_text('\n'.join(rest) + '\n')
+                elif p.is_file():
+                    p.unlink()
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
+            lf.close()
     except Exception:
         pass
 

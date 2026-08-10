@@ -188,8 +188,12 @@ function reconcileStaleSessions() {
     if (!sessionId || outcome) continue; // no session_id, or already resolved -- leave alone
 
     const receivedAtRaw = row[col.received_at];
-    const receivedAt = receivedAtRaw ? new Date(receivedAtRaw).getTime() : null;
-    if (receivedAt === null || receivedAt > cutoff) continue; // unparseable or still fresh
+    // A present-but-unparseable value makes getTime() return NaN, not null --
+    // every comparison against NaN (including `NaN > cutoff`) is false, so
+    // the old `receivedAt === null` check alone let such rows fall through
+    // and get closed as stale despite never actually being confirmed old.
+    const receivedAt = receivedAtRaw ? new Date(receivedAtRaw).getTime() : NaN;
+    if (Number.isNaN(receivedAt) || receivedAt > cutoff) continue; // unparseable or still fresh
 
     upsertRow_(sheet, headers, { session_id: sessionId, outcome: 'unknown', logged_by: 'server_sweep' });
     reconciled++;
