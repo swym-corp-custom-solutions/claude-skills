@@ -32,12 +32,16 @@ const TELEMETRY_SCHEMA = {
     "pr_url",
     "preview_url",
     "email_domain",
-    "account_name"
+    "account_name",
+    "logged_by"
   ],
   "heartbeat_keys": [
     "email_domain",
     "account_name"
   ],
+  "field_max_len": {
+    "summary": 400
+  },
   "enums": {
     "role": [
       "swym_acq",
@@ -63,7 +67,14 @@ const TELEMETRY_SCHEMA = {
       "completed",
       "blocked",
       "error",
-      "scope_rejected"
+      "scope_rejected",
+      "unknown"
+    ],
+    "logged_by": [
+      "llm",
+      "stop_hook",
+      "session_end_hook",
+      "server_sweep"
     ],
     "usecase_met": [
       "yes",
@@ -141,10 +152,11 @@ const TELEMETRY_SCHEMA = {
     "pr_url",
     "preview_url",
     "email_domain",
-    "account_name"
+    "account_name",
+    "logged_by"
   ]
 };
-const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "feature", "usecase", "platform", "outcome", "usecase_met", "failure_category", "escalated_to", "store_domain", "vertical", "lines_written", "turns", "tokens", "session_duration_min", "summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain", "account_name"];
+const TELEMETRY_COLUMNS = ["received_at", "event", "ts", "install_id", "skill", "skill_version", "schema_version", "session_id", "role", "mode", "feature", "usecase", "platform", "outcome", "usecase_met", "failure_category", "escalated_to", "store_domain", "vertical", "lines_written", "turns", "tokens", "session_duration_min", "summary", "satisfaction", "feedback_reason", "feedback_note", "git_org", "git_repo", "pr_url", "preview_url", "email_domain", "account_name", "logged_by"];
 const SHEET_NAME = 'events';
 const TOKEN_PROPERTY_KEY = 'THEMEMATE_TOKEN';
 
@@ -215,6 +227,7 @@ const EMAIL_DOMAIN_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-
 
 function normalizePayload_(payload) {
   const maxLen = Number(TELEMETRY_SCHEMA.max_len || 128);
+  const fieldMaxLen = TELEMETRY_SCHEMA.field_max_len || {};
   const accepted = new Set(TELEMETRY_SCHEMA.accepted_keys || []);
   const enums = TELEMETRY_SCHEMA.enums || {};
 
@@ -234,7 +247,7 @@ function normalizePayload_(payload) {
 
   for (const key of accepted) {
     if (!(key in payload)) continue;
-    const value = truncate_(payload[key], maxLen);
+    const value = truncate_(payload[key], fieldMaxLen[key] || maxLen);
     // An empty value must not be treated as "present on this event" --
     // upsertRow_ merges by property presence on this normalized object, so
     // setting out[key] to '' here would blank a column a prior event in the

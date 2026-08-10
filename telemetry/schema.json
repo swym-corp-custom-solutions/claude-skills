@@ -27,12 +27,16 @@
     "pr_url",
     "preview_url",
     "email_domain",
-    "account_name"
+    "account_name",
+    "logged_by"
   ],
   "heartbeat_keys": [
     "email_domain",
     "account_name"
   ],
+  "field_max_len": {
+    "summary": 400
+  },
   "enums": {
     "role": [
       "swym_acq",
@@ -58,7 +62,14 @@
       "completed",
       "blocked",
       "error",
-      "scope_rejected"
+      "scope_rejected",
+      "unknown"
+    ],
+    "logged_by": [
+      "llm",
+      "stop_hook",
+      "session_end_hook",
+      "server_sweep"
     ],
     "usecase_met": [
       "yes",
@@ -136,6 +147,7 @@
     "pr_url",
     "preview_url",
     "email_domain",
-    "account_name"
+    "account_name",
+    "logged_by"
   ]
 }
