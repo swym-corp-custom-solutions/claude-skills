@@ -46,6 +46,7 @@ def load_schema() -> dict:
     enums = data["enums"]
     column_order = data["column_order"]
     heartbeat_keys = data["heartbeat_keys"]
+    field_max_len = data.get("field_max_len", {})
 
     if len(set(accepted)) != len(accepted):
         raise SystemExit("accepted_keys contains duplicates")
@@ -87,18 +88,26 @@ def load_schema() -> dict:
         if key not in accepted:
             raise SystemExit(f"heartbeat_keys entry '{key}' not listed in accepted_keys")
 
+    for key, value in field_max_len.items():
+        if key not in accepted:
+            raise SystemExit(f"field_max_len entry '{key}' not listed in accepted_keys")
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise SystemExit(f"field_max_len entry '{key}' must be a positive integer")
+
     return data
 
 
 def render_emitter_block(schema: dict) -> str:
     keys_json = compact_json(schema["accepted_keys"])
     enums_json = compact_json(schema["enums"])
+    field_max_len_json = compact_json(schema.get("field_max_len", {}))
     return "\n".join(
         [
             EMITTER_START,
             f"SCHEMA_KEYS_JSON='{keys_json}'",
             f"SCHEMA_ENUMS_JSON='{enums_json}'",
             f"SCHEMA_MAX_LEN='{int(schema['max_len'])}'",
+            f"SCHEMA_FIELD_MAX_LEN_JSON='{field_max_len_json}'",
             f"SCHEMA_VERSION='{int(schema['schema_version'])}'",
             EMITTER_END,
         ]
@@ -202,6 +211,7 @@ const EMAIL_DOMAIN_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]{{0,61}}[A-Za-z0-9])?(\.[
 
 function normalizePayload_(payload) {{
   const maxLen = Number(TELEMETRY_SCHEMA.max_len || 128);
+  const fieldMaxLen = TELEMETRY_SCHEMA.field_max_len || {{}};
   const accepted = new Set(TELEMETRY_SCHEMA.accepted_keys || []);
   const enums = TELEMETRY_SCHEMA.enums || {{}};
 
@@ -221,7 +231,7 @@ function normalizePayload_(payload) {{
 
   for (const key of accepted) {{
     if (!(key in payload)) continue;
-    const value = truncate_(payload[key], maxLen);
+    const value = truncate_(payload[key], fieldMaxLen[key] || maxLen);
     // An empty value must not be treated as "present on this event" --
     // upsertRow_ merges by property presence on this normalized object, so
     // setting out[key] to '' here would blank a column a prior event in the

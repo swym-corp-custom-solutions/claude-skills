@@ -18,8 +18,12 @@ SKILLS_DIR="$HOME/.claude/skills"
 SELF_PATH="$HOME/.claude/skill-updater.sh"
 LOCK_FILE="/tmp/swym-skill-check-$(date +%Y%m%d).lock"
 HEARTBEAT_LOCK="/tmp/swym-thememate-heartbeat-$(date +%Y%m%d).lock"
+SELFHEAL_LOCK="/tmp/swym-thememate-selfheal-$(date +%Y%m%d).lock"
 TELEMETRY_OPTOUT_MARKER="$HOME/.claude/.thememate-telemetry-optout"
 SYNC_SHA_CACHE="$HOME/.claude/.thememate-sync-shas"
+AUTOLOG_SCRIPT="$HOME/.claude/thememate-autolog.py"
+HOOKS_LIB_SCRIPT="$HOME/.claude/thememate-hooks.py"
+AUTOLOG_STATE_DIR="$HOME/.claude/.thememate-active"
 
 # Only run once per calendar day
 [ -f "$LOCK_FILE" ] && exit 0
@@ -104,25 +108,45 @@ if [ -f "$TELEMETRY_SCRIPT" ] && [ ! -f "$HEARTBEAT_LOCK" ]; then
   bash "$TELEMETRY_SCRIPT" heartbeat email_domain="$HEARTBEAT_EMAIL_DOMAIN" account_name="$HEARTBEAT_ACCOUNT_NAME" >/dev/null 2>&1
 fi
 
+# --- Hook self-heal + backstop state GC (deterministic, no gh required) ---
+# Fires at most once per calendar day, own lock, independent of gh -- a hook
+# entry silently disappearing from settings.json (a documented incident in a
+# sibling project) should get caught and re-added even on machines where the
+# gh-gated skill-sync below never runs. thememate-hooks.py (installed by
+# install.sh) owns the "which hooks are expected" list and the safe
+# backup/validate/atomic-replace write -- shared with install.sh and
+# install.sh --doctor instead of a fourth copy of this logic.
+if [ ! -f "$SELFHEAL_LOCK" ] && command -v python3 &>/dev/null && [ -f "$HOOKS_LIB_SCRIPT" ]; then
+  touch "$SELFHEAL_LOCK" 2>/dev/null
+  python3 "$HOOKS_LIB_SCRIPT" sync >/dev/null 2>&1
+  # Bound growth from sessions that were killed before SessionEnd (or
+  # anything) could mark their own state file done -- see thememate-autolog.py.
+  find "$AUTOLOG_STATE_DIR" -name "*.json" -mtime +7 -delete 2>/dev/null
+fi
+
 # Requires gh CLI -- check before burning the day's lock
 command -v gh &>/dev/null || exit 0
 command -v python3 &>/dev/null || exit 0
 
 touch "$LOCK_FILE"
 
-# One lightweight call for both files' current SHAs -- see sync_if_sha_changed's
-# comment above.
+# One lightweight call for all four files' current SHAs -- see
+# sync_if_sha_changed's comment above.
 REMOTE_SHAS=$(gh api "repos/$REPO/contents?ref=main" \
-  --jq '.[] | select(.name == "telemetry-emit.sh" or .name == "skill-updater.sh") | "\(.name)=\(.sha)"' 2>/dev/null)
+  --jq '.[] | select(.name == "telemetry-emit.sh" or .name == "skill-updater.sh" or .name == "thememate-autolog.py" or .name == "thememate-hooks.py") | "\(.name)=\(.sha)"' 2>/dev/null)
 
-# --- Sync telemetry-emit.sh ---------------------------------------------
+# --- Sync telemetry-emit.sh / thememate-autolog.py -----------------------
 # Respects the permanent opt-out marker exactly like install.sh does. A bare
 # `rm` of the file without that marker is only ever documented as an opt-out
 # for "one install" (see install.sh) -- so it's expected, not a bug, that a
 # newer version reappears here if the marker isn't set.
 if [ ! -f "$TELEMETRY_OPTOUT_MARKER" ]; then
   sync_if_sha_changed "telemetry-emit.sh" "$TELEMETRY_SCRIPT"
+  sync_if_sha_changed "thememate-autolog.py" "$AUTOLOG_SCRIPT"
 fi
+# thememate-hooks.py isn't telemetry-specific (it also registers the daily
+# update hook), so it syncs unconditionally, same as skill-updater.sh itself.
+sync_if_sha_changed "thememate-hooks.py" "$HOOKS_LIB_SCRIPT"
 
 # Discover all skills published to the repo's main branch
 SKILL_NAMES=$(gh api "repos/$REPO/contents/skills?ref=main" \

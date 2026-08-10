@@ -164,9 +164,71 @@ Addresses Copilot review findings on PR #17.
 
 ## ThemeMate
 
-### [2.14.0] 2026-08-06: Telemetry as a first-class step in the executed sequence
+### [2.16.0] 2026-08-11: account_name on every session, log-correlated session close, SKILL.md completeness
 
 Current version.
+
+**Root cause:** auditing 2.15.0's backstop against the actual production sheet and a sibling project (`avery-onboarding-suite`) found four problems that weren't "row missing" (2.15.0 already fixed that) but "row exists, wrong or incomplete." Each is a different failure mode, fixed independently.
+
+**`telemetry-emit.sh` -- `account_name` now attaches to every event, not just a machine's first-ever session**
+- Bug: SKILL.md gated both the one-time interactive ask AND the field's attachment behind the same `~/.claude/.thememate-account-name`-not-existing flag, on the theory that later sessions' rows would "carry it forward via the sheet's upsert-merge" -- but `upsertRow_` merges by exact `session_id`, and every session gets a new one (new row), so nothing ever carried across. Only the very first-ever session on a machine ever showed a name.
+- Fix: `telemetry-emit.sh` now reads the cache file and auto-attaches `account_name` to every outgoing event itself, mirroring how `install_id` already works -- no caller (SKILL.md's own emits, `thememate-autolog.py`'s synthetic backstop emits, `skill-updater.sh`'s heartbeat) has to do anything. SKILL.md keeps the one-time interactive ask (only a chat turn can do that) but no longer threads `account_name=` through its sample `session_start` command.
+
+**`telemetry-emit.sh` -- local audit-log rotation race fixed (`flock` via `fcntl`, not the CLI tool, which isn't on macOS by default)**
+- The append-then-rotate-to-500-lines sequence for `~/.claude/.thememate-telemetry.log` was an unlocked read-modify-write; two ThemeMate sessions emitting close together could lose one's line. Harmless while the log was purely a debug trail -- now load-bearing (see next item), so it's locked.
+
+**`thememate-autolog.py` -- session-close identity resolution now correlates against the local telemetry log instead of extracting a literal UUID from transcript text**
+- Confirmed live: the LLM sometimes generates `session_id` into a shell variable (`SESSION_ID=$(...)`, `session_id=$SESSION_ID`) rather than a literal value -- no static transcript-text scan can ever resolve that, so an orphaned `session_start` with no `session_end` previously fell through to "do nothing client-side," relying entirely on the 24h sweep.
+- Fix: `telemetry-emit.sh` already logs bash's *already-resolved* argv to its local audit log, so the log always has the real literal id regardless of how the LLM constructed it. `SessionEnd` now correlates this session's own `session_start` Bash-call transcript timestamp against that log within a 45-second window to recover the real id -- safe by construction (too-tight a match just falls through to the sweep below, never wrongly closes a still-running session; a global cross-terminal sweep by short time-since-last-line was considered and rejected for the opposite reason: `session_heartbeat`'s cadence is turn-count-based, not wall-clock, so a real in-progress session can easily go quiet longer than any short buffer). State shape simplified: dropped the `started`/`ended` literal-uuid lists entirely, added `session_start_ts`.
+
+**`telemetry/apps-script/InstallRollup.gs` -- `reconcileStaleSessions` tightened from daily/24h to hourly/4h**
+- `received_at` refreshes on every event for a session (including heartbeats), so a legitimately active session never goes stale regardless of how tight this runs -- only a truly hard-killed one (the case no client-side hook can catch at all) does. Closes that case in about an hour instead of up to a day.
+
+**`skills/swym-thememate/SKILL.md` -- three missing localized session-ending reminders added**
+- `AUDIT`'s session-ending reminder previously only covered the `swym_support`/`DIAGNOSTIC_SUMMARY` sub-case; a plain THEME_INSPECT completion for the other four roles had none. `DEMO_PUSH` Step 6 only covered "user says yes to HANDOFF"; the decline branch had none. The `agency`/`merchant` block endpoints in Section 4's function-sequence table resolve into prose, not a named function, so they never had anywhere to hang a reminder -- added an inline note directly after the table instead. None of these were "row missing" (2.15.0's backstop already guaranteed a row) but each produced a sparse, backstop-authored row (`outcome=unknown`) instead of a rich, LLM-authored one.
+
+**One-time production sheet cleanup (`exit_summary`/`summary`), not a code change**
+- The real sheet had never had the manual header rename `telemetry/README.md` already documented when `summary` replaced `exit_summary` -- both columns now hold real, disjoint data (old rows in one, everything since 2026-08-05 in the other). New `migrateExitSummaryColumn()` (Apps Script) copies `exit_summary` into blank `summary` cells; not automated end-to-end since deleting the old column is harder to reverse than copying into one.
+
+**`telemetry-emit.sh` -- delivery itself now retries, instead of a bare fire-and-forget POST**
+- The original `curl --max-time 3`, backgrounded and never checked, could silently lose a correctly-invoked event on a cold Apps Script instance (Google's own web apps commonly take several seconds to wake from idle). Send is now a longer-timeout (15s -- safe to lengthen since it was never actually bounding the caller's wait) attempt that checks the response *body* for `"ok":true` (Code.gs always returns HTTP 200 even for a rejected token or a server exception, so the status code alone proves nothing), queues to `~/.claude/.thememate-usage-fallback.jsonl` (capped 1000 lines) on any failure, and drains that queue on the next successful send (truncating after each delivered row, not after the whole loop, so an interrupted drain can't re-send what it already delivered).
+
+**`install.sh` -- new `--doctor` check-only mode; new shared `thememate-hooks.py`**
+- Factored the "which hooks are expected" list and the settings.json read/write logic out of three separate copies (install.sh's registration, skill-updater.sh's daily self-heal, and this new doctor check) into one file, `thememate-hooks.py`, installed and self-updated like the other helper scripts.
+- Safer writes: back up the existing `settings.json` before writing, write the merged result to a temp file in the same directory, re-parse *that* file to confirm valid JSON, only then atomically replace the original; refuse to touch a `settings.json` that fails to parse at all rather than guessing. `bash install.sh --doctor` reports hook-registration/script-presence status without changing anything -- verified it correctly flags a hook manually deleted from settings.json (the exact incident class documented in a sibling project) and that a normal run self-heals it.
+
+**Two additional bugs found only by testing against the real production endpoint, not local mocks**
+- `urllib`/`ssl` on macOS's python.org-distributed Python (used for the retry queue's send step, initially) does not use the system certificate trust store the way `curl` does -- it failed every single HTTPS request with a certificate-verification error, silently queueing 100% of real traffic. Local tests never caught this because they used plain-HTTP test servers. Fixed by shelling out to `curl` for the actual transport (python only wraps it for the response-body check and retry logic); `curl` has always worked correctly here.
+- Even after that fix, `curl -L` (auto-follow redirects) reproducibly mishandled the cross-host redirect Apps Script's webapp always issues (`script.google.com` -> `script.googleusercontent.com`) under HTTP/2 on this curl build -- surfacing as a generic Google Drive 404, or (forcing `--http1.1`) an explicit "411 Length Required," i.e. curl replaying a malformed POST at the second hop instead of the plain GET that endpoint actually expects. Fixed by following the redirect as an explicit, separate `curl` call to the first response's `Location` header instead of relying on `-L` -- confirmed 100% reliable across repeated live tests where `-L` failed every time.
+- Also renamed two Apps Script functions (`reconcileStaleSessions_` -> `reconcileStaleSessions`, `migrateExitSummaryColumn_` -> `migrateExitSummaryColumn`): Apps Script treats a trailing-underscore function name as private and excludes it from the Add Trigger dialog's function dropdown entirely (confirmed via Google's own community forum -- the official docs page doesn't mention it), so neither could ever be wired to a trigger under their original names. This repo's other internal helpers (`upsertRow_`, `ensureHeaders_`, etc.) correctly keep the underscore since they're never meant to be triggered directly.
+
+### [2.15.0] 2026-08-10: Deterministic no-data-miss telemetry backstop + narrative summary
+
+Superseded by 2.16.0. Archived at `versions/SKILL-2.15.0.md`.
+
+**Root cause:** three prior fixes (2.11.0, 2.12.0, 2.14.0 below) all added more prose/TodoWrite reminders to make the LLM itself more likely to remember to fire `session_start`/`session_heartbeat`/`session_end` -- and 2.14.0's own postmortem shows that still failing live. Every one of those events lived entirely inside "the LLM remembers to run a bash command while executing the rest of a long task," with nothing external ever verifying it happened. This version doesn't add a fourth reminder -- it adds a mechanism outside the LLM's control that closes the gap regardless of whether the reminder works.
+
+**New: `thememate-autolog.py` (repo root, installed to `~/.claude/thememate-autolog.py`)**
+- Registered by `install.sh`/`skill-updater.sh` on Claude Code's `Stop` (fires every completed turn) and `SessionEnd` (fires once at session termination) hooks -- confirmed live, not assumed: an `InstructionsLoaded` hook (the original plan for cheaply detecting "this session touched ThemeMate") never fired in three separate test sessions despite the skill demonstrably loading, so detection instead rides on `Stop`'s own first invocation for a session, which did fire reliably.
+- `Stop`: incrementally scans each in-scope session's own transcript (byte-offset tracked, cost independent of transcript size) for `session_start`/`session_end` calls already made, scoped strictly to `Bash` tool_use `input.command` text -- not transcript text generally, since Section 14's own documentation contains the literal string `telemetry-emit.sh session_start` in its examples, which would otherwise false-positive the instant the skill loads. If no `session_start` appears after a grace period (3 stops *and* 90 elapsed seconds -- both, so BRAND_DISCOVER's Playwright cold start inside turn 1 doesn't trigger a false backstop), fires a synthetic one itself (`logged_by=stop_hook`).
+- `SessionEnd`: closes any `session_id` left open with a synthetic `session_end` (`logged_by=session_end_hook`, `outcome=unknown`), deliberately omitting `summary`/`role`/`mode`/etc. so the row's existing columns (set by the LLM's own last heartbeat) are preserved by the sheet's upsert-merge rather than blanked.
+- Confirmed live: `SessionEnd` fires on a graceful exit and on a SIGTERM-based kill, but did **not** fire when the process was sent `SIGKILL` -- so this hook alone isn't a complete backstop.
+
+**New: `reconcileStaleSessions()` in `telemetry/apps-script/InstallRollup.gs` (hand-maintained)**
+- Closes the gap the client-side hooks can't, by construction (a hard-killed process runs no hooks at all): a daily sweep closes any `events` row with a `session_id`, blank `outcome`, and `received_at` older than 24h with `outcome=unknown, logged_by=server_sweep`, via `upsertRow_` in-process (no HTTP round trip).
+
+**`telemetry/schema.json` / generated artifacts**
+- New `outcome=unknown` enum value (reserved for the backstop layers -- the LLM never uses it itself, since it always knows its own real outcome by `session_end`).
+- New `logged_by` field (`llm | stop_hook | session_end_hook | server_sweep`) -- its absence marks an LLM-authored row; its presence measures, per layer, how often the backstop actually had to compensate.
+- New `field_max_len` schema key: a per-field override on top of the existing global `max_len` (128). `summary` is set to 400 -- see below.
+
+**Section 14 -- `summary` becomes an append-only pointer-log**
+- Previously a single evolving one-liner, overwritten at each checkpoint -- now an append-only log of short `<checkpoint>: <what happened>` segments joined with ` | `, held as running state and resent in full on every `session_heartbeat`/`session_end` call (the sheet never concatenates server-side). On overflowing the new 400-char cap, the oldest segment(s) drop first, keeping the newest plus the original `session_start` segment as a stable anchor. Makes a session's whole arc -- including one abandoned mid-way, closed only by the backstop -- legible from one cell instead of showing only its last-known status.
+- Brief new note on the backstop's existence and the `logged_by`/`outcome=unknown` conventions above, so the LLM path isn't confused seeing hook-authored rows -- informational only, doesn't change the LLM's own emit obligations.
+
+### [2.14.0] 2026-08-06: Telemetry as a first-class step in the executed sequence
+
+Superseded by 2.15.0. Archived at `versions/SKILL-2.14.0.md`.
 
 **Root cause:** a live THEME_EDIT session emitted zero telemetry for 6 user turns -- no `session_start`, no `session_heartbeat`, no `session_id` generated at all -- despite 2.12.0's TodoWrite forcing function (Section 1 step 2). That instruction lives in prose read once at session start; it has no dependency or blocking relationship with any function in the actual Section 4 FUNCTION SEQUENCE the model executes step-by-step, so it's easy to never circle back to. Backfilled `session_start` + a catch-up `session_heartbeat` manually once the gap was noticed mid-session.
 

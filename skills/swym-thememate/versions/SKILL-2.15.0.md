@@ -8,8 +8,8 @@ description: >
   integrations via the Swym REST API. Uses Shopify CLI for Shopify
   storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.16.0
-  last_updated: 2026-08-11
+  version: 2.15.0
+  last_updated: 2026-08-10
 ---
 
 # ThemeMate
@@ -317,8 +317,6 @@ Every row below starts with `session_start`. This is a checkpoint, not a second 
 | swym_support | session_start -> BRAND_DISCOVER -> DIAGNOSTIC_SUMMARY (file access required for fix -- cannot continue) |
 | agency | session_start -> BRAND_DISCOVER -> block ("Need client theme access to continue") |
 | merchant | session_start -> BRAND_DISCOVER -> NO_CODE_CSS_PATH (CSS requests) or block (structural changes) |
-
-The `agency` and `merchant` **block** endpoints above are themselves session-ending points (they don't resolve into a named function, so there's no function body to hang this reminder on) -- emit `session_end` (Section 14) immediately when you deliver that block message: `outcome=blocked failure_category=theme_access_denied` for the agency case, `outcome=scope_rejected` for the merchant structural-changes block. (`NO_CODE_CSS_PATH` isn't a block -- it continues the session, so it doesn't end here.)
 
 ---
 
@@ -756,10 +754,6 @@ If a prior custom Swym implementation is found (not just default App Embed), fun
 
 Reconcile BRAND_DISCOVER DOM findings with THEME_PULL file findings. Fill the feature status table: Status = DOM state (authoritative), Source = file origin.
 
-#### Session-ending point (THEME_INSPECT, all roles except `swym_support`)
-
-Presenting the feature status table is this session's completion point if the user doesn't continue into THEME_EDIT (Section 3, THEME_INSPECT) -- emit the `session_end` **TELEMETRY** event (Section 14) here with `outcome=completed usecase_met=<yes|no> summary="<one-line audit findings>"`. If the user does continue into THEME_EDIT, skip this -- the THEME_EDIT session's own completion point (PR_FLOW, HANDOFF, etc.) covers it instead. (`swym_support` sessions don't hit this -- they always continue to DIAGNOSTIC_SUMMARY below.)
-
 #### For `swym_support` -- DIAGNOSTIC_SUMMARY (mandatory at end of AUDIT)
 
 ```
@@ -1109,7 +1103,6 @@ Iterate: EDIT -> push -> share updated URL. Repeat until user is satisfied.
 
 "Would you like a handoff package with steps to apply these changes to the merchant's real store?"
 If yes: call HANDOFF.
-If no: this is the session's completion point -- emit the `session_end` **TELEMETRY** event (Section 14) here with `outcome=completed`, including `preview_url` (Step 4).
 
 ---
 
@@ -2012,7 +2005,7 @@ ThemeMate reports anonymous, best-effort usage events so Swym can see adoption a
 
 `telemetry-emit.sh` also attaches a stable, anonymous `install_id` (a UUID persisted at `~/.claude/.thememate-install-id`, generated on first use) to every event -- this is what lets reach/adoption be counted per machine rather than per event. You never need to pass it yourself.
 
-**A deterministic backstop exists independent of you.** A `Stop`/`SessionEnd` Claude Code hook (`thememate-autolog.py`, not something you run or narrate) watches for whether `session_start`/`session_end` actually fired in this transcript and fills in a synthetic row (`outcome=unknown`, `logged_by=stop_hook|session_end_hook`) if they didn't -- plus an hourly server-side sweep (`logged_by=server_sweep`) for sessions where the process died before even that could run. This exists because you won't always remember to fire these calls, not as a reason to be looser about firing them yourself -- your own emit, when it happens, always carries the richer, more accurate fields. Never set `logged_by` yourself; its absence is what marks a row as yours. Never use `outcome=unknown` yourself either -- it's reserved for the backstop; by the time you reach `session_end` you always know your own real outcome.
+**A deterministic backstop exists independent of you.** A `Stop`/`SessionEnd` Claude Code hook (`thememate-autolog.py`, not something you run or narrate) watches for whether `session_start`/`session_end` actually fired in this transcript and fills in a synthetic row (`outcome=unknown`, `logged_by=stop_hook|session_end_hook`) if they didn't -- plus a daily server-side sweep (`logged_by=server_sweep`) for sessions where the process died before even that could run. This exists because you won't always remember to fire these calls, not as a reason to be looser about firing them yourself -- your own emit, when it happens, always carries the richer, more accurate fields. Never set `logged_by` yourself; its absence is what marks a row as yours. Never use `outcome=unknown` yourself either -- it's reserved for the backstop; by the time you reach `session_end` you always know your own real outcome.
 
 **Emit with:**
 ```bash
@@ -2056,10 +2049,10 @@ Before firing, resolve these fields:
   git config user.email 2>/dev/null
   ```
   If either returns an address, keep only the part after `@` as `{email_domain}` and discard the rest immediately -- never print, log, quote, or otherwise surface the full address anywhere. If both come back empty, omit `email_domain` entirely. **Never ask the user for their email** -- this is opportunistic from already-configured local/GitHub identity only. (GITHUB_SETUP, Section 5, still runs this same lookup later for THEME_EDIT sessions -- harmless repeat of the same value.)
-- **`{account_name}`** -- the interactive ask happens at most once per machine, ever, gated on `~/.claude/.thememate-account-name` not existing. Ask this as a single plain-text chat question, not a multiple-choice/enum-style tool prompt (e.g. `AskUserQuestion`) -- a "Skip / Share a name" style choice can't capture the actual name in the same round trip and just forces a second back-and-forth to get the real answer. Ask once, in plain text: "To help Swym attribute usage more accurately, want to share your name or your agency's name? Optional -- just say skip to decline, and I won't ask again." Write whatever the user says (or the literal `skip`) to that file regardless of the answer, so this is asked at most once per machine, ever. If Section 2's role ask (rule 3 or 6) is also about to fire this same session, combine both into a single plain-text message instead of asking twice. **You never need to pass `account_name` in any emit call yourself** -- `telemetry-emit.sh` reads this same cache file and attaches it to every event on your behalf, on every session, the same way it already attaches `install_id`. (Earlier versions of this skill only sent it on the one session that did the asking, which meant every later session's row came out blank -- that's now fixed at the script level, not something to work around here.)
+- **`{account_name}`** -- best-effort, only on the very first `session_start` this install has ever fired, gated on `~/.claude/.thememate-account-name` not existing. Ask this as a single plain-text chat question, not a multiple-choice/enum-style tool prompt (e.g. `AskUserQuestion`) -- a "Skip / Share a name" style choice can't capture the actual name in the same round trip and just forces a second back-and-forth to get the real answer. Ask once, in plain text: "To help Swym attribute usage more accurately, want to share your name or your agency's name? Optional -- just say skip to decline, and I won't ask again." Write whatever the user says (or the literal `skip`) to that file regardless of the answer, so this is asked at most once per machine, ever. If Section 2's role ask (rule 3 or 6) is also about to fire this same session, combine both into a single plain-text message instead of asking twice. Omit `account_name` from the call below if the file already holds `skip` or doesn't yet have a real answer.
 
 ```bash
-bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE> feature=<feature> usecase="<one-line intent>" summary="session_start: <one-line intent>" email_domain=<domain, if resolved>
+bash ~/.claude/telemetry-emit.sh session_start session_id=<uuid you generate now and reuse verbatim below> role=<role> mode=<MODE> feature=<feature> usecase="<one-line intent>" summary="session_start: <one-line intent>" email_domain=<domain, if resolved> account_name=<value, first session only>
 ```
 Also add `platform=<shopify|bigcommerce|headless>` to this same call if already knowable this early (e.g. the user's request already named the platform or gave a `.myshopify.com` URL) -- most sessions won't know it yet, that's fine, it still gets captured at `session_end` below.
 
@@ -2098,7 +2091,7 @@ Also add `platform=<shopify|bigcommerce|headless>` to this same call if already 
 ```bash
 bash ~/.claude/telemetry-emit.sh session_heartbeat session_id=<same uuid from session_start> role=<role> mode=<current MODE> turns=<n> session_duration_min=<n> tokens=<n, if resolved> summary="<full accumulated pointer-log, not just the newest segment>"
 ```
-Same PII backstop as the `session_end` `summary` below -- never include a customer name, email, order number, or other personal detail in any segment. `email_domain`/`feature`/`usecase` don't need repeating here -- they were already set on `session_start` and carry forward via the sheet's upsert-merge within this same session. `account_name` never needs including anywhere -- `telemetry-emit.sh` attaches it to every event itself.
+Same PII backstop as the `session_end` `summary` below -- never include a customer name, email, order number, or other personal detail in any segment. `email_domain`/`account_name`/`feature`/`usecase` don't need repeating here -- they were already set on `session_start` and carry forward via the sheet's upsert-merge.
 
 **`session_end`** -- fire once, at whichever completion point the session actually reaches (DIAGNOSTIC_SUMMARY, PR_FLOW after `gh pr create`, HANDOFF package delivery, KNOWLEDGE mode's answer when the user doesn't continue into THEME_EDIT, or any point ThemeMate cannot continue). Always include `role=<role>` -- it's known for the full session (Section 2) and is the main way completed/blocked/error outcomes get sliced by who ran the session. Always include `turns` and `session_duration_min` too -- the running counters above are tracked for every session regardless of mode. Include `tokens` alongside them whenever it resolved (Bash + Claude Code transcript access) -- best-effort, so omit rather than guess when it didn't. Always include `summary` (finalized -- the full accumulated pointer-log from `session_start` through every `session_heartbeat`, with one last segment appended for how the session actually ended, not a replacement of the earlier segments) and `usecase_met` (`yes`/`no` -- your own judgment of whether what happened actually satisfies the `usecase` captured at `session_start`; distinct from `outcome` below, which tracks whether the session reached a definitive completion state, not whether the original intent was met). Always include `store_domain` too when BRAND_DISCOVER has run (i.e. every session except pure KNOWLEDGE) -- it's the single most useful join key for per-merchant reliability trends, don't drop it just because other fields below are unresolved; include `vertical` alongside it whenever `store_domain` is included -- BRAND_DISCOVER Step 8 (Section 5) already records `{vertical}` for METADATA.md, just reuse that same value here. The rest are genuinely optional -- include whichever resolved during the session, omit the rest:
 - `store_domain` -- the `.myshopify.com` (or resolved custom) domain captured in BRAND_DISCOVER Step 1/4.
@@ -2107,7 +2100,7 @@ Same PII backstop as the `session_end` `summary` below -- never include a custom
 - `git_org` / `git_repo` -- set in GITHUB_SETUP (Section 5). `git_org` doubles as one agency identifier for `role=agency` sessions; `account_name` (Section 14 above) is the other, self-disclosed one.
 - `pr_url` -- the URL `gh pr create` returns in PR_FLOW.
 - `preview_url` -- whichever shareable preview URL was constructed this session (DEMO_PUSH Step 4, or the merchant's connected-theme preview URL if already known by session end).
-- `email_domain` / `feature` / `usecase` -- normally already set on `session_start` and carried forward by the sheet's upsert-merge, so you don't need to repeat them here. Only include `email_domain` if it resolved for the first time after `session_start` (e.g. via GITHUB_SETUP on a session that had neither `gh` nor `git` identity configured yet at start). **`email_domain`: only the domain, never the address** -- the emit script rejects anything containing `@` or not shaped like a bare domain, as a backstop behind the strip-and-discard step. `account_name` never needs including here either -- `telemetry-emit.sh` attaches it to every event itself, this one included.
+- `email_domain` / `account_name` / `feature` / `usecase` -- normally already set on `session_start` and carried forward by the sheet's upsert-merge, so you don't need to repeat them here. Only include `email_domain` if it resolved for the first time after `session_start` (e.g. via GITHUB_SETUP on a session that had neither `gh` nor `git` identity configured yet at start). **`email_domain`: only the domain, never the address** -- the emit script rejects anything containing `@` or not shaped like a bare domain, as a backstop behind the strip-and-discard step.
 
 `failure_category` and `escalated_to` are optional too, but only ever included when `outcome != completed`:
 ```bash

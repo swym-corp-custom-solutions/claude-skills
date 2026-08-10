@@ -25,7 +25,8 @@ When you add a key in [telemetry/schema.json](schema.json):
 1. Add key to accepted_keys
 2. Add key to column_order
 3. Add enum constraints in enums if needed
-4. Regenerate artifacts
+4. Add a `field_max_len` override if this key needs more (or less) room than the global `max_len` (128) -- e.g. `summary` is set to 400 so it can hold a running pointer-log of the whole session instead of a single overwritten line. Only list keys that need to differ; anything absent from `field_max_len` falls back to the global `max_len`.
+5. Regenerate artifacts
 
 At runtime, Apps Script runs header sync on every event:
 - Existing columns are preserved
@@ -44,7 +45,18 @@ At runtime, Apps Script runs header sync on every event:
 ```
 ScriptApp.newTrigger('buildInstallRollup').timeBased().everyDays(1).atHour(6).create()
 ```
-After a fresh Apps Script project setup, copy both `Code.gs` and `InstallRollup.gs` into the project -- `InstallRollup.gs` reuses `Code.gs`'s `SHEET_NAME`/`HEARTBEAT_SHEET_NAME` constants directly (both files share one project's global scope), so it won't run correctly on its own.
+After a fresh Apps Script project setup, copy both `Code.gs` and `InstallRollup.gs` into the project -- `InstallRollup.gs` reuses `Code.gs`'s `SHEET_NAME`/`HEARTBEAT_SHEET_NAME`/`TELEMETRY_COLUMNS`/`ensureHeaders_`/`upsertRow_` directly (both files share one project's global scope), so it won't run correctly on its own.
+
+## No-data-miss backstop
+
+ThemeMate's `session_start`/`session_heartbeat`/`session_end` events are otherwise emitted entirely by the LLM following SKILL.md's prose instructions mid-task -- nothing external ever verified those calls actually fired, and live sessions have shipped with zero telemetry despite multiple rounds of stronger prose reminders. Three layers close that gap, from most to least direct:
+
+1. **[thememate-autolog.py](../thememate-autolog.py)** -- installed to `~/.claude/thememate-autolog.py`, registered by `install.sh`/`skill-updater.sh` on Claude Code's `Stop` (fires every completed turn) and `SessionEnd` (fires once at session termination) hooks. `Stop` incrementally scans each in-scope session's own transcript for `session_start`/`session_end` calls the LLM already made and, if none ever appears after a grace period, fires a synthetic `session_start` itself (`logged_by=stop_hook`). `SessionEnd` closes any session_id left open with a synthetic `session_end` (`logged_by=session_end_hook`, `outcome=unknown`), deliberately omitting `summary`/`role`/`mode`/etc. so the row's existing columns (set by the LLM's own last heartbeat) are preserved rather than blanked.
+2. **`reconcileStaleSessions()`** in [InstallRollup.gs](apps-script/InstallRollup.gs) -- confirmed live (not assumed from docs) that `SessionEnd` does not fire when the Claude Code process is sent `SIGKILL`, which means layer 1 cannot be a complete backstop by itself: a hard-killed process runs no hooks at all. This server-side daily sweep closes any `events` row with a `session_id`, a blank `outcome`, and a `received_at` older than `STALE_SESSION_HOURS` (24h) with `outcome=unknown, logged_by=server_sweep`. Wire it the same way as `buildInstallRollup`:
+   ```
+   ScriptApp.newTrigger('reconcileStaleSessions').timeBased().everyDays(1).atHour(5).create()
+   ```
+3. **`logged_by`** (`llm | stop_hook | session_end_hook | server_sweep`) -- lets you measure, per layer, how often the backstop actually had to compensate, rather than only noticing a gap by chance.
 
 ## CI guard
 
