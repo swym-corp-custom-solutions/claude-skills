@@ -157,6 +157,7 @@ const TOKEN_PROPERTY_KEY = 'THEMEMATE_TOKEN';
 // calendar day, so ping_count doubles as a distinct-days-active count.
 const HEARTBEAT_SHEET_NAME = 'heartbeat';
 const HEARTBEAT_COLUMNS = {heartbeat_columns};
+const INSTALL_ROLLUP_SHEET_NAME = 'install_rollup';
 
 function doPost(e) {{
   try {{
@@ -169,7 +170,7 @@ function doPost(e) {{
       return jsonResponse_(403, {{ ok: false, error: 'unauthorized' }});
     }}
 
-    const normalized = normalizePayload_(raw);
+    const normalized = applyInstallIdentityFallback_(normalizePayload_(raw));
 
     if (normalized.event === 'heartbeat') {{
       const sheet = getOrCreateSheet_(HEARTBEAT_SHEET_NAME);
@@ -249,6 +250,77 @@ function normalizePayload_(payload) {{
   }}
 
   return out;
+}}
+
+function normalizeIdentityValue_(key, value) {{
+  if (value === undefined || value === null) return '';
+  let out = String(value).trim().replace(/\s+/g, ' ');
+  if (!out) return '';
+
+  if (key === 'account_name') {{
+    if (out.toLowerCase() === 'skip') return '';
+    if (/@/.test(out) || /\d{{7,}}/.test(out)) return '';
+    return out;
+  }}
+
+  if (key === 'email_domain') {{
+    out = out.toLowerCase();
+    if (/@/.test(out) || !EMAIL_DOMAIN_PATTERN.test(out)) return '';
+    return out;
+  }}
+
+  return out;
+}}
+
+function valueFromInstallSheet_(sheetName, installId, key) {{
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) return '';
+
+  const headers = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0] || [];
+  const installCol = headers.indexOf('install_id');
+  const valueCol = headers.indexOf(key);
+  if (installCol === -1 || valueCol === -1) return '';
+
+  const rowNum = findRowByValue_(sheet, installCol, installId);
+  if (rowNum === -1) return '';
+
+  const raw = sheet.getRange(rowNum, valueCol + 1).getValue();
+  return normalizeIdentityValue_(key, raw);
+}}
+
+function resolveInstallIdentity_(installId) {{
+  const out = {{ account_name: '', email_domain: '' }};
+  if (!installId) return out;
+
+  // Prefer heartbeat for install identity; rollup is fallback only.
+  out.account_name = valueFromInstallSheet_(HEARTBEAT_SHEET_NAME, installId, 'account_name');
+  out.email_domain = valueFromInstallSheet_(HEARTBEAT_SHEET_NAME, installId, 'email_domain');
+
+  if (!out.account_name) {{
+    out.account_name = valueFromInstallSheet_(INSTALL_ROLLUP_SHEET_NAME, installId, 'account_name');
+  }}
+  if (!out.email_domain) {{
+    out.email_domain = valueFromInstallSheet_(INSTALL_ROLLUP_SHEET_NAME, installId, 'email_domain');
+  }}
+
+  return out;
+}}
+
+function applyInstallIdentityFallback_(payload) {{
+  if (!payload || typeof payload !== 'object') return payload;
+  const installId = String(payload.install_id || '');
+  if (!installId) return payload;
+
+  const existingAccount = normalizeIdentityValue_('account_name', payload.account_name || '');
+  const existingDomain = normalizeIdentityValue_('email_domain', payload.email_domain || '');
+  const missingAccount = !existingAccount;
+  const missingDomain = !existingDomain;
+  if (!missingAccount && !missingDomain) return payload;
+
+  const resolved = resolveInstallIdentity_(installId);
+  if (missingAccount && resolved.account_name) payload.account_name = truncate_(resolved.account_name, 80);
+  if (missingDomain && resolved.email_domain) payload.email_domain = truncate_(resolved.email_domain, 80);
+  return payload;
 }}
 
 function getOrCreateSheet_(sheetName) {{
