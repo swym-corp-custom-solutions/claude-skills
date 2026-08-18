@@ -164,7 +164,7 @@ Addresses Copilot review findings on PR #17.
 
 ## ThemeMate
 
-### [2.17.0] 2026-08-18: Hard gate on PLAN confirmation before EDIT in THEME_EDIT
+### [2.17.0] 2026-08-18: Hard gate on PLAN confirmation, PREREQUISITES/role-priority fixes, Shopify-only platform gate for THEME_INSPECT/THEME_EDIT
 
 Current version.
 
@@ -174,6 +174,12 @@ Current version.
 - Section 1 TOOLS: new explicit hard-gate rule under "Writing theme files" -- no Write, Edit, `rm`, or `shopify theme push` call may happen in THEME_EDIT until PLAN has been presented and the user has explicitly confirmed it; presenting the plan is not itself confirmation.
 - PLAN function: replaced the soft "wait for user confirmation before starting EDIT" line with an explicit gate covering CSS-only/small changes too, and requiring a revised plan to be re-presented and re-confirmed if the user asks for changes.
 - EDIT function: new entry check at the top of the function -- confirm the user explicitly confirmed the plan for this specific ask before doing anything else in EDIT; silence or the user simply continuing the conversation does not count.
+- PREREQUISITES' "Called by" line was missing `merchant`, contradicting Section 4's own THEME_EDIT has-access sequence table (which lists PREREQUISITES for the merchant role). Added `merchant` to the Called-by line.
+- PREREQUISITES Check 2 referenced "a Path B session" as if PLAN had already decided it, but PLAN runs after PREREQUISITES in every sequence. Reworded to reference the role's stated *default* (Section 2) or already-expressed user intent instead of an unresolved decision.
+- PREREQUISITES, THEME_PULL, and AUDIT were written exclusively for Shopify (App Embed, `config/settings_data.json`, `shopify theme pull`) with no BigCommerce path, despite BigCommerce being listed as a supported THEME_EDIT platform in Section 13. Initially patched with a BigCommerce-specific instruction-mode path through those functions; superseded within this same version once product direction landed (see next item) on restricting THEME_INSPECT/THEME_EDIT to Shopify only for now -- that in-flow BigCommerce plumbing was removed as dead code rather than left unreachable.
+- **Product decision: THEME_INSPECT and THEME_EDIT are Shopify-only for now.** BigCommerce, headless/custom frontends, and (already) WooCommerce/Wix are KNOWLEDGE-only until audit/edit support for them is built (roadmap item, not scheduled). New platform gate in Section 3 (MODE classification) resolves MODE to KNOWLEDGE for a named non-Shopify platform up front, with a matching backstop in BRAND_DISCOVER Step 1 (`window.Shopify?.shop` check) for when the platform wasn't known until the store was actually probed -- either path falls back to KNOWLEDGE with a plain "not available yet, on the roadmap" message and emits `session_end` (`outcome=blocked failure_category=platform_not_supported`). Section 13's platform bullets, IMPLEMENTATION_TYPE's Called-by note, THEME_PULL's Called-by note, and AUDIT's Called-by note all updated to say Shopify-only; the JS/REST API catalogues (Section 9) and IMPLEMENTATION_TYPE's classification table are left in place as roadmap reference, not deleted.
+- Role behaviors clarified for Path A (default config changes) vs Path B (custom implementation) precedence, which wasn't stated for `swym_support`/`agency` and was under-specified for `swym_acq`: `swym_support`'s primary approach is now explicitly Path A (custom solution secondary, only when config changes can't fix it); `swym_acq` and `agency` now explicitly default to Path B as primary even when the ask is achievable via default config, with config-change suggestions as the secondary option.
+- Frontmatter `description` (the field that decides when this skill gets invoked at all) still advertised "implement Swym UI on a Shopify or BigCommerce storefront, or build headless integrations via the Swym REST API" -- directly contradicted the new platform gate above. Reworded to say audit/edit is Shopify-only for now and BigCommerce/headless are answered knowledge-only.
 
 ### [2.16.0] 2026-08-11: account_name on every session, log-correlated session close, SKILL.md completeness
 

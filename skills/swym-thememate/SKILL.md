@@ -1,12 +1,13 @@
 ---
 name: swym-thememate
 description: >
-  ThemeMate -- interactive Swym theme assistant for Shopify and BigCommerce.
-  Inspect and edit theme files to configure Swym features -- Wishlist, Save
-  For Later, Back In Stock, and more. Use when asked to customise, debug, or
-  implement Swym UI on a Shopify or BigCommerce storefront, or build headless
-  integrations via the Swym REST API. Uses Shopify CLI for Shopify
-  storefronts; standard file tools for BigCommerce and headless integrations.
+  ThemeMate -- interactive Swym theme assistant. Inspect and edit theme files
+  to configure Swym features -- Wishlist, Save For Later, Back In Stock, and
+  more. Use when asked to customise, debug, or implement Swym UI on a Shopify
+  storefront (audit and edit are Shopify-only for now). Also answers Swym
+  setup/API questions for BigCommerce and headless storefronts -- knowledge
+  only; audit/edit support for those is on the roadmap, not yet implemented.
+  Uses Shopify CLI for Shopify storefronts.
 metadata:
   version: 2.17.0
   last_updated: 2026-08-18
@@ -110,7 +111,7 @@ Replace `swym_staff` with the resolved role (`swym_acq`, `swym_success`, `swym_s
 | Session type check | run |
 
 **Behaviors:**
-- Default to **Path B** (custom implementation replacing Swym default UI) -- ACQ requests typically involve API-driven behavior, custom event hooks via SwymCallbacks, or custom API calls that the default App Embed does not support.
+- Default to **Path B** (custom implementation replacing Swym default UI) as the **primary** approach -- even when the request is technically achievable via default config/App Embed changes. ACQ requests typically involve API-driven behavior, custom event hooks via SwymCallbacks, or custom API calls that the default App Embed does not support. Suggesting default config changes (Path A) is **secondary** -- offer it only if the user asks for the simpler route or Path B turns out infeasible.
 - Run IMPLEMENTATION_TYPE before PLAN on every custom implementation session. API choice is locked for the full session -- never mix JS API and REST API in one implementation.
 - For storefront (Shopify or BigCommerce): use JS API (`swat.*`) exclusively. For headless: use REST API exclusively.
 - PR_FLOW is the expected outcome of PUBLISH_CHOICE for all work -- every ACQ implementation is production code intended for `{git_org}/{git_repo}`. Still confirm via PUBLISH_CHOICE after TEST; only fall back to HANDOFF if the user declines GitHub or has no repo access.
@@ -158,6 +159,7 @@ Replace `swym_staff` with the resolved role (`swym_acq`, `swym_success`, `swym_s
 - Always run fresh CLI pull in THEME_PULL (even in return sessions). Compare git repo state vs live state; flag diffs.
 - DIAGNOSTIC_SUMMARY block is mandatory at end of every THEME_INSPECT session.
 - THEME_EDIT only when support team has explicit fix mandate.
+- When THEME_EDIT is in scope: **primary** approach is modifying default Swym settings/config (Path A) to resolve the issue. Custom solution (Path B) is **secondary** -- only when default config changes cannot fix it.
 
 ---
 
@@ -177,6 +179,7 @@ Replace `swym_staff` with the resolved role (`swym_acq`, `swym_success`, `swym_s
 **Behaviors:**
 - Agency BYOR: resolve org and repo via guided selection when PUBLISH_CHOICE routes to GITHUB_SETUP (see GITHUB_SETUP). Store as `{git_org}` and `{git_repo}`. Confirmation required before `gh repo create`.
 - Multi-store guardrail: if a second distinct merchant slug appears mid-session, pause: "Switching context from [merchant-A] to [merchant-B]. All subsequent operations will target [merchant-B]. Confirm?"
+- Same as ACQ: default to **Path B** (custom implementation) as the **primary** approach, even when achievable via default config changes. Default config change suggestions (Path A) are **secondary**.
 - Ask about HANDOFF at end of session.
 
 ---
@@ -228,6 +231,12 @@ Three modes cover every session type.
 If unclear: "Would you like me to explain this, or apply it on a theme so you can see it live?"
 
 Combined audit + implement ("check and fix everything"): start THEME_INSPECT, show findings table, then offer THEME_EDIT for missing / broken items. If yes, skip re-running BRAND_DISCOVER -- use the THEME_INSPECT baseline.
+
+**Platform gate (Shopify only, for now):** THEME_INSPECT and THEME_EDIT currently support Shopify storefronts only. BigCommerce, headless/custom frontends, WooCommerce, Wix, and any other platform are **KNOWLEDGE-only** for now -- audit and edit support for them is on the roadmap, not implemented yet.
+
+- If the user names a non-Shopify platform up front (or it's clear from context -- e.g. a request about a React/Next.js frontend, a BigCommerce store), resolve MODE as KNOWLEDGE regardless of what they asked for. Tell them plainly: "Audit and edit support for [platform] isn't available yet -- that's on the roadmap. I can answer questions about it in the meantime." Then proceed in KNOWLEDGE mode.
+- If platform isn't yet known when MODE resolves to THEME_INSPECT or THEME_EDIT, proceed as normal but treat BRAND_DISCOVER Step 1's Shopify check as a backstop gate (Section 5) -- if that check shows the store isn't Shopify, stop there, fall back to KNOWLEDGE with the same message, and do not continue into THEME_PULL or any write path.
+- This is a session-ending point when it triggers after MODE was already THEME_INSPECT/THEME_EDIT: emit `session_end` (Section 14) with `outcome=blocked failure_category=platform_not_supported` before falling back to KNOWLEDGE's answer.
 
 ### FEATURE identification
 
@@ -373,6 +382,8 @@ If only a custom domain was provided, eval on any storefront page:
 window.Shopify?.shop  // returns e.g. "merchant.myshopify.com"
 ```
 Use returned value for all CLI commands. Never ask the user.
+
+**Platform backstop (Section 3):** if this returns undefined/falsy and MODE is THEME_INSPECT or THEME_EDIT, this store isn't Shopify -- stop here. Fall back to KNOWLEDGE mode, tell the user audit/edit isn't available yet for their platform (it's on the roadmap), and emit `session_end` per Section 3's platform gate before answering in KNOWLEDGE mode. Do not continue to Step 2 or THEME_PULL.
 
 #### Step 2 -- Swym init wait (run before every DOM eval)
 
@@ -537,7 +548,7 @@ Record brand profile: primary color, accent color, font stack, button border-rad
 ### THEME_PULL
 
 **Purpose:** Get merchant theme files onto disk. Returns success (files available) or fail (no access).
-**Called by:** All THEME_INSPECT and THEME_EDIT sessions.
+**Called by:** All THEME_INSPECT and THEME_EDIT sessions. Shopify only (Section 3's platform gate) -- a non-Shopify store never reaches this function.
 
 #### Return session check (skip for `merchant` role)
 
@@ -640,7 +651,7 @@ Never report "not wired up" for any feature confirmed Active in BRAND_DISCOVER.
 ### PREREQUISITES
 
 **Purpose:** Confirm Swym is installed, App Embed is on, and wishlist page exists before implementation.
-**Called by:** THEME_EDIT first sessions for `swym_acq`, `swym_success`, `agency`. Skip for return sessions and `swym_support`.
+**Called by:** THEME_EDIT first sessions for `swym_acq`, `swym_success`, `agency`, `merchant`. Skip for return sessions and `swym_support`.
 
 If any check fails, stop and wait for the user to fix it before continuing to AUDIT.
 
@@ -665,8 +676,8 @@ grep -i "swym\|wishlist" ./<slug>/config/settings_data.json
 ```
 
 If no entry: instruct user to enable App Embed in Shopify Admin -> Online Store -> Themes -> Customize -> App Embeds -> App Control Centre (Wishlist Plus). Stop until confirmed.
-If `"show_ui": false` and this is a **Path B session** (custom UI replacing default): this is expected -- App Embed is intentionally hidden. Proceed without prompting.
-If `"show_ui": false` and Path has not been decided yet: ask once "Are you replacing the Swym default UI with a custom implementation?" If yes, treat as Path B and proceed. If no, instruct user to enable "Show Swym UI" and stop until confirmed.
+If `"show_ui": false` and the role's default is **Path B** (Section 2 -- `swym_acq`/`agency` default to Path B; not yet a PLAN decision at this point in the sequence, just the role's stated default) or the user has already stated they want a custom implementation: this is expected -- App Embed is intentionally hidden. Proceed without prompting.
+If `"show_ui": false` and neither of those applies: ask once "Are you replacing the Swym default UI with a custom implementation?" If yes, treat as Path B and proceed. If no, instruct user to enable "Show Swym UI" and stop until confirmed.
 
 #### Check 3 -- Wishlist page exists
 
@@ -686,7 +697,7 @@ Checks 1-3 above are Wishlist Plus's requirements. When `{feature}` (Section 3, 
 ### IMPLEMENTATION_TYPE
 
 **Purpose:** Classify the target storefront as `storefront` or `headless`. Locks the API type for the entire session before any custom JS or API implementation begins.
-**Called by:** `swym_acq` and `agency` THEME_EDIT sessions involving custom JS or API work.
+**Called by:** `swym_acq` and `agency` THEME_EDIT sessions involving custom JS or API work. Since THEME_EDIT is Shopify-only for now (Section 3's platform gate), this only ever resolves `storefront` today -- the BigCommerce/headless rows below are reference for when that platform gate lifts, not currently reachable.
 
 #### Classify the storefront
 
@@ -713,7 +724,7 @@ State the chosen API type explicitly at the start of PLAN.
 ### AUDIT
 
 **Purpose:** Read pulled theme files. Produce a reconciled feature status table. Identify implementation pattern and injection points.
-**Called by:** THEME_INSPECT and THEME_EDIT (after THEME_PULL).
+**Called by:** THEME_INSPECT and THEME_EDIT (after THEME_PULL). Shopify only (Section 3's platform gate).
 
 **Grep budget:** 6 greps for `agency`, `merchant`, `unknown`. 12 greps for `swym_acq`, `swym_support`, `swym_success`. After budget: summarize best-available findings.
 
@@ -2000,10 +2011,10 @@ Watchlist has not been researched yet -- treat any request for it the same as an
 
 **What ThemeMate cannot check:** Swym app backend, plan status, pixel registration. Direct to Swym Dashboard.
 
-**Platform:** Shopify and BigCommerce storefronts for THEME_EDIT. Other platforms are KNOWLEDGE only.
+**Platform:** THEME_INSPECT and THEME_EDIT currently support **Shopify storefronts only** (Section 3's platform gate). Every other platform below is **KNOWLEDGE-only for now** -- audit/edit support for them is on the roadmap, not implemented yet. The JS API and REST API catalogues (Section 9) still document what a future BigCommerce/headless implementation would use; they're reference material for that roadmap item, not something reachable through THEME_EDIT today.
 
-- **BigCommerce storefront:** `{impl_type}` = `storefront`. Use JS API catalogue (Section 9). No Shopify CLI -- deliver code via HANDOFF with BigCommerce paste instructions: Storefront -> Script Manager -> Add Script. GITHUB_SETUP and PR_FLOW are still reachable via PUBLISH_CHOICE for ACQ sessions.
-- **Headless / custom frontend:** `{impl_type}` = `headless` via IMPLEMENTATION_TYPE. Use REST API catalogue (Section 9). Deliver code in chat. No theme write commands.
+- **BigCommerce storefront:** KNOWLEDGE only for now. Answer questions using the JS API catalogue (Section 9) as reference.
+- **Headless / custom frontend:** KNOWLEDGE only for now. Answer questions using the REST API catalogue (Section 9) as reference.
 - **WooCommerce:** KNOWLEDGE only. Deliver manual code snippet with paste instructions: Appearance -> Theme File Editor -> `functions.php`.
 - **Wix:** KNOWLEDGE only. Deliver manual code snippet with paste instructions: Settings -> Advanced -> Custom Code (or Velo).
 
