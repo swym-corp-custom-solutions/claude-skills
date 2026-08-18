@@ -55,22 +55,59 @@ fi
 INSTALL_ID=$(cat "$INSTALL_ID_FILE" 2>/dev/null)
 [ -n "$INSTALL_ID" ] || exit 0
 
-# Auto-attach account_name from cache, mirroring install_id above. SKILL.md
-# asks for this once ever (gated on this same file not existing) but the
-# answer must reach EVERY session's row, not just that first one -- upsert
-# merge only carries a value across events sharing one session_id, never
-# across different sessions (different session_id, different row). Centralizing
-# the resend here means every caller benefits for free: SKILL.md's own emits,
-# thememate-autolog.py's synthetic backstop emits (which have no way to know
-# this value themselves), and skill-updater.sh's heartbeat all get it without
-# doing anything extra. Only attaches if the caller didn't already pass one
-# explicitly (the one-time ask flow still writes its answer straight through).
+# Normalize multiline/whitespace-rich values to a single line before putting
+# them into key=value args.
+normalize_one_line() {
+    printf '%s' "$1" | tr '\r\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
+}
+
+resolve_email_domain() {
+    local email domain
+    email=$(gh api user --jq '.email // empty' 2>/dev/null)
+    [ -n "$email" ] || email=$(git config user.email 2>/dev/null)
+    if [[ "$email" == *"@"* ]]; then
+        domain="${email##*@}"
+    fi
+    domain=$(normalize_one_line "$domain")
+    [ -n "$domain" ] || domain="unknown.local"
+    printf '%s' "$domain"
+}
+
+# Resolve a non-empty operator label for every event. Preference order:
+# explicit cache value -> GitHub name/login -> git user.name -> shell user.
+# If everything is unavailable, fall back to a stable non-empty sentinel.
+resolve_account_name() {
+    local cached resolved
+    cached=$(cat "$ACCOUNT_NAME_FILE" 2>/dev/null)
+    cached=$(normalize_one_line "$cached")
+    if [ -n "$cached" ] && [ "$cached" != "skip" ]; then
+        printf '%s' "$cached"
+        return
+    fi
+
+    resolved=$(gh api user --jq '.name // .login // empty' 2>/dev/null)
+    resolved=$(normalize_one_line "$resolved")
+    [ -n "$resolved" ] || resolved=$(normalize_one_line "$(git config user.name 2>/dev/null)")
+    [ -n "$resolved" ] || resolved=$(normalize_one_line "${USER:-}")
+    [ -n "$resolved" ] || resolved="unknown-operator"
+
+    mkdir -p "$(dirname "$ACCOUNT_NAME_FILE")" 2>/dev/null
+    printf '%s\n' "$resolved" > "$ACCOUNT_NAME_FILE" 2>/dev/null
+    chmod 600 "$ACCOUNT_NAME_FILE" 2>/dev/null
+    printf '%s' "$resolved"
+}
+
+# Auto-attach account_name/email_domain, mirroring install_id above. The
+# identity fields must be present on every row for reporting visibility, so
+# emit-time defaults guarantee non-empty values even when callers omit them.
 ACCOUNT_NAME_FILE="$HOME/.claude/.thememate-account-name"
-if [ -s "$ACCOUNT_NAME_FILE" ] && ! printf '%s\n' "$@" | grep -q '^account_name='; then
-  CACHED_ACCOUNT_NAME=$(cat "$ACCOUNT_NAME_FILE" 2>/dev/null)
-  if [ -n "$CACHED_ACCOUNT_NAME" ] && [ "$CACHED_ACCOUNT_NAME" != "skip" ]; then
-    set -- "$@" "account_name=$CACHED_ACCOUNT_NAME"
-  fi
+if ! printf '%s\n' "$@" | grep -Eq '^account_name=.+'; then
+    RESOLVED_ACCOUNT_NAME=$(resolve_account_name)
+    [ -n "$RESOLVED_ACCOUNT_NAME" ] && set -- "$@" "account_name=$RESOLVED_ACCOUNT_NAME"
+fi
+if ! printf '%s\n' "$@" | grep -Eq '^email_domain=.+'; then
+    RESOLVED_EMAIL_DOMAIN=$(resolve_email_domain)
+    [ -n "$RESOLVED_EMAIL_DOMAIN" ] && set -- "$@" "email_domain=$RESOLVED_EMAIL_DOMAIN"
 fi
 
 # Manual test pings (e.g. verifying a Sheet/Apps Script change) otherwise land
