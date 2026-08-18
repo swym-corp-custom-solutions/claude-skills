@@ -236,7 +236,7 @@ Combined audit + implement ("check and fix everything"): start THEME_INSPECT, sh
 
 - If the user names a non-Shopify platform up front (or it's clear from context -- e.g. a request about a React/Next.js frontend, a BigCommerce store), resolve MODE as KNOWLEDGE regardless of what they asked for. Tell them plainly: "Audit and edit support for [platform] isn't available yet -- that's on the roadmap. I can answer questions about it in the meantime." Then proceed in KNOWLEDGE mode.
 - If platform isn't yet known when MODE resolves to THEME_INSPECT or THEME_EDIT, proceed as normal but treat BRAND_DISCOVER Step 1's Shopify check as a backstop gate (Section 5) -- if that check shows the store isn't Shopify, stop there, fall back to KNOWLEDGE with the same message, and do not continue into THEME_PULL or any write path.
-- This is a session-ending point when it triggers after MODE was already THEME_INSPECT/THEME_EDIT: emit `session_end` (Section 14) with `outcome=blocked failure_category=platform_not_supported` before falling back to KNOWLEDGE's answer.
+- This is a session-ending point when it triggers after MODE was already THEME_INSPECT/THEME_EDIT: emit `session_end` (Section 14) with `outcome=blocked failure_category=out_of_scope` before falling back to KNOWLEDGE's answer.
 
 ### FEATURE identification
 
