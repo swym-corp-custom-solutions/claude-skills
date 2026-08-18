@@ -93,7 +93,7 @@ def get_cell(row: List[str], idx: int) -> str:
 def missing_report(rows: List[List[str]], cols: List[str]) -> Dict[str, Dict[str, float]]:
     if not rows:
         return {}
-    headers = rows[0]
+    headers = [h.strip() for h in rows[0]]
     idx_map = {h: i for i, h in enumerate(headers)}
     body = rows[1:]
     total = len(body)

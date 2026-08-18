@@ -311,13 +311,15 @@ function applyInstallIdentityFallback_(payload) {{
   const installId = String(payload.install_id || '');
   if (!installId) return payload;
 
-  const missingAccount = !payload.account_name;
-  const missingDomain = !payload.email_domain;
+  const existingAccount = normalizeIdentityValue_('account_name', payload.account_name || '');
+  const existingDomain = normalizeIdentityValue_('email_domain', payload.email_domain || '');
+  const missingAccount = !existingAccount;
+  const missingDomain = !existingDomain;
   if (!missingAccount && !missingDomain) return payload;
 
   const resolved = resolveInstallIdentity_(installId);
-  if (missingAccount && resolved.account_name) payload.account_name = resolved.account_name;
-  if (missingDomain && resolved.email_domain) payload.email_domain = resolved.email_domain;
+  if (missingAccount && resolved.account_name) payload.account_name = truncate_(resolved.account_name, 80);
+  if (missingDomain && resolved.email_domain) payload.email_domain = truncate_(resolved.email_domain, 80);
   return payload;
 }}
 

@@ -251,10 +251,10 @@ def write_outputs(
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    (out_dir / "backfill-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    (out_dir / "backfill-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
     def write_csv(path: Path, rows: List[Dict[str, str]], headers: List[str]) -> None:
-        with path.open("w", newline="") as f:
+        with path.open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=headers)
             w.writeheader()
             for row in rows:
@@ -313,24 +313,27 @@ def run_backfill(xlsx: Path, out_dir: Path, mode: str, allow_sentinels: bool) ->
     if not events_rows:
         raise RuntimeError("events sheet is empty")
 
-    e_headers = events_rows[0]
-    h_headers = hb_rows[0] if hb_rows else []
-    r_headers = rollup_rows[0] if rollup_rows else []
+    e_headers = [h.strip() for h in events_rows[0]]
+    h_headers = [h.strip() for h in hb_rows[0]] if hb_rows else []
+    r_headers = [h.strip() for h in rollup_rows[0]] if rollup_rows else []
 
     for needed in ["install_id", "account_name", "email_domain", "session_id"]:
         if needed not in e_headers:
             raise RuntimeError(f"events missing required column: {needed}")
 
-    hb_map = {
-        row_to_dict(h_headers, row).get("install_id", ""): row_to_dict(h_headers, row)
-        for row in hb_rows[1:]
-        if row_to_dict(h_headers, row).get("install_id", "")
-    }
-    rollup_map = {
-        row_to_dict(r_headers, row).get("install_id", ""): row_to_dict(r_headers, row)
-        for row in rollup_rows[1:]
-        if row_to_dict(r_headers, row).get("install_id", "")
-    }
+    hb_map: Dict[str, Dict[str, str]] = {}
+    for row in hb_rows[1:]:
+        row_dict = row_to_dict(h_headers, row)
+        install_id = row_dict.get("install_id", "")
+        if install_id:
+            hb_map[install_id] = row_dict
+
+    rollup_map: Dict[str, Dict[str, str]] = {}
+    for row in rollup_rows[1:]:
+        row_dict = row_to_dict(r_headers, row)
+        install_id = row_dict.get("install_id", "")
+        if install_id:
+            rollup_map[install_id] = row_dict
 
     idx_install = e_headers.index("install_id")
     idx_session = e_headers.index("session_id")
@@ -507,7 +510,7 @@ def run_backfill(xlsx: Path, out_dir: Path, mode: str, allow_sentinels: bool) ->
                 out_zip.writestr(item, data)
 
     out_xlsx.with_suffix(".tmp.xlsx").replace(out_xlsx)
-    (out_dir / "backfill-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    (out_dir / "backfill-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return summary
 
 
