@@ -8,8 +8,8 @@ description: >
   integrations via the Swym REST API. Uses Shopify CLI for Shopify
   storefronts; standard file tools for BigCommerce and headless integrations.
 metadata:
-  version: 2.17.0
-  last_updated: 2026-08-18
+  version: 2.16.0
+  last_updated: 2026-08-11
 ---
 
 # ThemeMate
@@ -41,9 +41,6 @@ sub-directory unless explicitly shown in a code block.
 - Read full file: Read tool for files <= 20 KB or new files
 
 **Writing theme files (unpublished themes only -- never the live theme)**
-
-**Hard gate:** in THEME_EDIT, no Write, Edit, `rm`, or `shopify theme push` call may happen until PLAN (Section 5) has been presented and the user has explicitly confirmed it. Presenting the plan is not confirmation -- an explicit go-ahead from the user is. If the user requests changes to the plan, revise and re-present; only a subsequent explicit confirmation opens this gate.
-
 - Write new file: Write tool, then push
 - Patch existing: Edit tool, then push
 - Delete file: `rm ./<slug>/<file>`, then push
@@ -798,7 +795,7 @@ Do not write any API calls if IMPLEMENTATION_TYPE was not run.
 4. Actual extracted values from AUDIT (`settings_data` / `--color-*` / `--font-*`), not placeholders
 5. Which layout file(s) the target templates declare (from AUDIT template layout check)
 
-**Hard gate -- do not proceed to EDIT without this:** present Steps 1-5 above as the plan, then stop and wait. Do not call Write, Edit, `rm`, or any push/CLI write command yet -- not even for "obviously small" or CSS-only changes. If the user asks for modifications, revise the plan and present it again. Only an explicit confirmation of the (possibly revised) plan opens the gate to EDIT.
+Wait for user confirmation before starting EDIT.
 
 #### Path A -- Override Swym default styling
 
@@ -880,8 +877,6 @@ All EDIT work happens on this feature branch. No remote is configured here -- th
 **Purpose:** Write and patch theme files. Always on a feature branch. Never on a published / live theme.
 **Called by:** THEME_EDIT (after PLAN + user confirmation).
 **Works on:** Feature branch in merchant theme (has-access path) OR demo store base theme (no-access path).
-
-**Entry check (mandatory, before anything else in this function):** has the user explicitly confirmed the PLAN presented for this specific ask? If not -- go back to PLAN. Do not treat silence, a topic change, or the user simply continuing the conversation as confirmation.
 
 #### Telemetry checkpoint (mandatory, before Step A)
 

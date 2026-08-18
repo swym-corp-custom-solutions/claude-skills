@@ -164,9 +164,20 @@ Addresses Copilot review findings on PR #17.
 
 ## ThemeMate
 
-### [2.16.0] 2026-08-11: account_name on every session, log-correlated session close, SKILL.md completeness
+### [2.17.0] 2026-08-18: Hard gate on PLAN confirmation before EDIT in THEME_EDIT
 
 Current version.
+
+**Root cause:** THEME_EDIT's function sequence already routed every path through PLAN before EDIT, and PLAN said to "wait for user confirmation" -- but that phrasing was advisory prose, not a hard stop, so it read as a suggestion that could plausibly be skipped for "obviously small" asks. User feedback: theme edit sessions should never start implementing directly off the initial ask, even for small changes -- discovery/analysis produces a plan, the user gets to request changes to it, and only explicit confirmation of that plan opens the door to writing files.
+
+**`skills/swym-thememate/SKILL.md`**
+- Section 1 TOOLS: new explicit hard-gate rule under "Writing theme files" -- no Write, Edit, `rm`, or `shopify theme push` call may happen in THEME_EDIT until PLAN has been presented and the user has explicitly confirmed it; presenting the plan is not itself confirmation.
+- PLAN function: replaced the soft "wait for user confirmation before starting EDIT" line with an explicit gate covering CSS-only/small changes too, and requiring a revised plan to be re-presented and re-confirmed if the user asks for changes.
+- EDIT function: new entry check at the top of the function -- confirm the user explicitly confirmed the plan for this specific ask before doing anything else in EDIT; silence or the user simply continuing the conversation does not count.
+
+### [2.16.0] 2026-08-11: account_name on every session, log-correlated session close, SKILL.md completeness
+
+Superseded by 2.17.0. Archived at `versions/SKILL-2.16.0.md`.
 
 **Root cause:** auditing 2.15.0's backstop against the actual production sheet and a sibling project (`avery-onboarding-suite`) found four problems that weren't "row missing" (2.15.0 already fixed that) but "row exists, wrong or incomplete." Each is a different failure mode, fixed independently.
 
