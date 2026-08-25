@@ -9,8 +9,8 @@ description: >
   only; audit/edit support for those is on the roadmap, not yet implemented.
   Uses Shopify CLI for Shopify storefronts.
 metadata:
-  version: 2.18.0
-  last_updated: 2026-08-22
+  version: 2.17.0
+  last_updated: 2026-08-18
 ---
 
 # ThemeMate
@@ -425,16 +425,12 @@ For structure/requirement checks (especially PDP), use accessibility snapshot ou
   swymVersion: window.__SWYM__VERSION__,
   enabledFeatures: window.SwymEnabledCommonFeatures,
   themeName: window.Shopify?.theme?.schema_name,
-  themeId: window.Shopify?.theme?.id,
-  themeRole: window.Shopify?.theme?.role,
   wishlistEmbed: window.swymWishlistEmbedLoaded,
   swymDomCount: document.querySelectorAll('[class*="swym"],[id*="swym"]').length,
   wishlistPageLink: Array.from(document.querySelectorAll('a'))
     .find(a => /wishlist/i.test(a.href))?.href
 })
 ```
-
-**Theme identity guard:** a bare merchant URL (no `?preview_theme_id=`) can resolve to either the live theme or a draft, depending on a sticky preview cookie already set in the browser session from earlier navigation. `themeId`/`themeRole` above tell you which one actually loaded -- state it explicitly ("Testing against theme `<id>` (`<role>`)") before reporting any finding from this page. Don't assume the URL alone proves which theme you're looking at.
 
 #### Step 5 -- Wishlist page eval
 
@@ -751,8 +747,6 @@ grep -rn '"layout"' ./<slug>/templates/
 
 Not all templates declare `theme.liquid`. Inject CSS and JS into the layout file the target template actually uses. Injecting only in `theme.liquid` has no effect on templates that declare a different layout.
 
-**Multi-vertical themes:** the grep above outputs one line per template that declares a layout, not a deduplicated list -- multiple templates repeating the same value is not evidence of a single shared layout. Read through the output and note every distinct layout value that appears; a multi-vertical theme (e.g. `theme.liquid`, `apparel.liquid`, `cafe.liquid`) can have more than one with no shared include between them. Track every distinct layout file found, not just the one for the template currently in scope -- a fix applied to only one will not propagate to templates on the others (see EDIT Step B, and COMMON FAILURE PATTERNS #8).
-
 #### Wishlist template check
 
 ```bash
@@ -767,18 +761,6 @@ Wishlist template naming is not standardized. Common: `page.wishlist.liquid`, `p
 #### Caution -- orphaned settings
 
 A field's presence (and even a filled-in, brand-matched default value) in `config/settings_schema.json` / `settings_data.json` is not proof the theme uses it. Before treating a setting as active config, grep for its consumption (`settings.<id>`) in the theme's liquid/JS -- if nothing references it, it's dead, not a working customization.
-
-#### Caution -- merchant CSS already targeting Swym's own classes
-
-Before building on top of or debugging any Swym widget, check whether the merchant already has custom CSS rules targeting Swym's own class/ID names (e.g. `.swym-button-bar`, `#swym-atw-pdp-button`) that would hide or override it -- this can silently break a widget across every template that shares the rule, and is easy to miss since it produces no error, just a widget that "isn't wired up":
-
-```bash
-grep -rniE -A5 '\.swym-|#swym-|\[class\*="swym"\]' ./<slug>/assets/*.css ./<slug>/config/settings_data.json 2>/dev/null | grep -iE "display:[[:space:]]*none|visibility:[[:space:]]*hidden|opacity:[[:space:]]*0"
-```
-
-The selector and its hiding declaration are almost always on separate lines in real CSS (`.swym-button-bar {` then `display: none;` a line below) -- `-A5` carries the 5 lines following each selector match into the second grep so declarations on nearby lines are still caught, and `-i` on both greps catches mixed-case class names.
-
-Also check the Additional CSS field (surfaced via `settings_data.json`'s custom CSS key, if the theme stores it there) for the same pattern. If found, flag it to the user before proceeding -- it may explain an "inactive" feature that the App Embed/DOM checks otherwise show as present.
 
 #### Live-probe requirement (prior custom implementations only)
 
@@ -949,8 +931,6 @@ Every created file needs an include tag immediately:
 - `assets/*.js` -> `<script src="{{ 'FILE.js' | asset_url }}" defer></script>` before `</body>` in the correct layout file
 - `snippets/*.liquid` -> `{%- render 'SNIPPET-NAME' -%}` in the relevant section
 
-If AUDIT's template layout check found more than one distinct layout file theme-wide (multi-vertical theme), inject into each of them, not just the one for the template currently in scope -- otherwise the fix silently doesn't reach templates on the other verticals.
-
 Listing inclusion in "next steps" is INCOMPLETE. Inject in the same session.
 
 #### Step C -- Tally lines written (for TELEMETRY)
@@ -1067,22 +1047,6 @@ Master status eval (wait for Swym init first):
 #### Fix loop
 
 Max 3 iterations. If still broken: surface to user with diagnostic findings.
-
-**Hypothesis discipline:** if iteration 1's fix doesn't resolve the issue, do not spend iteration 2 on a second unverified calculation/positioning hypothesis. Stop and read the actual live stylesheet and computed styles (`getComputedStyle`, DevTools-equivalent) for the element in question first -- confirm what's really being applied before guessing again. See COMMON FAILURE PATTERNS #9 for the specific case of a silently-blocked JS style write.
-
-#### Cache discipline (mandatory before confirming a fix for any intermittent or timing-sensitive bug)
-
-A fast automation machine with a warm browser cache can pass a check the merchant's genuine hard refresh fails -- a cache-busted URL (`?v=<n>`) still lets CSS/JS/font subresources load from disk cache, masking real timing races. `browser_evaluate` cannot fix this (it only runs in-page JS with no network-layer access). Use `browser_run_code_unsafe`, which hands you the actual Playwright `page` object, to disable the browser cache at the CDP level before re-testing:
-
-```js
-async (page) => {
-  const client = await page.context().newCDPSession(page);
-  await client.send('Network.setCacheDisabled', { cacheDisabled: true });
-  return 'cache disabled';
-}
-```
-
-Run this once per test session before re-validating a bug described as intermittent, timing-related, or "works sometimes." Not required for straightforward static CSS/config checks.
 
 #### Rollback (if 3 iterations fail)
 
@@ -1312,7 +1276,7 @@ Merge only when user explicitly says "merge it", "go ahead and merge", or equiva
 
 #### After merge (only when user confirms merge happened)
 
-GitHub sync fires (~30-60 seconds). Navigate to merchant store preview URL. Before screenshotting, eval `window.Shopify?.theme?.id` and `.role` (BRAND_DISCOVER Step 4) and confirm the id matches `connected_theme_id` -- a sticky preview cookie from earlier navigation can silently load the live or a different draft theme instead. Only screenshot once the id matches.
+GitHub sync fires (~30-60 seconds). Navigate to merchant store preview URL. Screenshot to confirm sync.
 
 ```bash
 git tag <merchant-slug>-<feature>-<YYYY-MM-DD>
@@ -1498,7 +1462,7 @@ Never close a THEME_EDIT session without sharing a preview URL. The local dev UR
 
 ## 8. COMMON FAILURE PATTERNS
 
-Nine patterns account for most post-update Swym breakage. Check these first in THEME_INSPECT before escalating.
+Eight patterns account for most post-update Swym breakage. Check these first in THEME_INSPECT before escalating.
 
 **1. `show_ui: false` in App Embed after theme update or duplication**
 Symptom: all Swym UI disappears (buttons, launcher, header icon, card hearts) after a theme update.
@@ -1537,12 +1501,7 @@ Fix: restart `shopify theme dev`. File watches can lose track of newly added ass
 
 **8. Template uses a non-`theme.liquid` layout -- injection in `theme.liquid` has no effect**
 Symptom: script or style injected in `theme.liquid` does not load on target page.
-Fix: `grep -rn '"layout"' templates/` to find which layout file the target template declares. Inject there instead. If the theme is multi-vertical (more than one distinct layout file, e.g. `apparel.liquid`/`cafe.liquid`), inject into each one -- a fix in `theme.liquid` alone will not reach templates on the other verticals.
-
-**9. JS style write silently has no effect -- looks like a script/observer ordering bug**
-Symptom: `element.style.property = value` (or a similar direct DOM write) runs without error but the style never visibly changes; a second, third attempt at reordering the script or waiting longer produces the same result.
-Cause: Swym's own injected stylesheet already has `!important` on that property -- not a timing/ordering issue at all.
-Fix: before writing a second hypothesis, grep the live Swym CSS (CDN-injected or `swymcs-*.css`) and check `getComputedStyle` for `!important` on the target property/selector. If found, override via a CSS asset file with matching or higher specificity (see SWYM TECHNICAL REFERENCE, "CSS override pattern") instead of a JS style write.
+Fix: `grep -rn '"layout"' templates/` to find which layout file the target template declares. Inject there instead.
 
 ---
 
@@ -1587,7 +1546,7 @@ Save For Later has no entry here -- unlike these Wishlist elements, Swym does no
 
 #### CSS override pattern (Path A)
 
-Swym usually injects styles from CDN with single-class selectors and no `!important` -- but this isn't universal (some Control Center / positioning rules do carry `!important`), so verify against the live stylesheet rather than assuming. If a plain `element.style.property = value` JS write silently has no effect and throws no error, check Swym's own injected stylesheet for a pre-existing `!important` on that property before suspecting a script/observer ordering bug (see COMMON FAILURE PATTERNS #9). Override with a dedicated asset file:
+Swym injects styles from CDN with single-class selectors and no `!important`. Override with a dedicated asset file:
 
 ```css
 /* swymcs-<feature>.css */
@@ -2195,14 +2154,14 @@ bash ~/.claude/telemetry-emit.sh feedback session_id=<same uuid from session_sta
 - `platform`: `shopify | bigcommerce | headless | unknown`
 - `outcome`: `completed | blocked | error | scope_rejected` (a fifth value, `unknown`, exists in the schema but is reserved for the deterministic backstop hooks -- never use it yourself, you always know your own real outcome by the time you reach `session_end`)
 - `usecase_met`: `yes | no`
-- `failure_category` (only when `outcome != completed`; omit otherwise): `app_embed_hidden | css_specificity_conflict | snippet_removed_on_update | json_template_priority | callback_race_condition | zindex_stacking | hot_reload_stale | non_theme_liquid_layout | vendor_important_override | theme_access_denied | shopify_cli_auth_failure | push_failed | out_of_scope | browser_automation_failure | sfl_cart_toggle_disabled | bis_stale_variant_binding | bis_custom_webhook_unreachable | unsupported_feature_requested | other`
+- `failure_category` (only when `outcome != completed`; omit otherwise): `app_embed_hidden | css_specificity_conflict | snippet_removed_on_update | json_template_priority | callback_race_condition | zindex_stacking | hot_reload_stale | non_theme_liquid_layout | theme_access_denied | shopify_cli_auth_failure | push_failed | out_of_scope | browser_automation_failure | sfl_cart_toggle_disabled | bis_stale_variant_binding | bis_custom_webhook_unreachable | unsupported_feature_requested | other`
 - `escalated_to` (only when relevant; omit otherwise): `swym_engineering | shopify_support | bigcommerce_support | none`
 - `satisfaction`: `positive | neutral | negative`
 - `feedback_reason` (only when `satisfaction=negative`; omit otherwise): `incorrect_output | didnt_solve_issue | too_slow | unclear_explanation | other`
 
-Map Section 8's COMMON FAILURE PATTERNS 1-9 to `failure_category` values 1:1 in list order (pattern 1 -> `app_embed_hidden`, ... pattern 8 -> `non_theme_liquid_layout`, pattern 9 -> `vendor_important_override`) -- these 9 are cross-cutting (they apply regardless of which Swym feature the session is about). Use `theme_access_denied` / `shopify_cli_auth_failure` / `push_failed` / `out_of_scope` for the other blocked/error paths described elsewhere in this skill, and `other` only when none of these fit. Use `browser_automation_failure` specifically when browser tooling (CDP/Playwright) that was working degrades or breaks mid-session and blocks the task -- distinct from a CDP setup failure caught at BRAND_DISCOVER's pre-step (Section 5), which has its own Path X/Path Y fallback and doesn't need this category.
+Map Section 8's COMMON FAILURE PATTERNS 1-8 to `failure_category` values 1:1 in list order (pattern 1 -> `app_embed_hidden`, ... pattern 8 -> `non_theme_liquid_layout`) -- these 8 are cross-cutting (they apply regardless of which Swym feature the session is about). Use `theme_access_denied` / `shopify_cli_auth_failure` / `push_failed` / `out_of_scope` for the other blocked/error paths described elsewhere in this skill, and `other` only when none of these fit. Use `browser_automation_failure` specifically when browser tooling (CDP/Playwright) that was working degrades or breaks mid-session and blocks the task -- distinct from a CDP setup failure caught at BRAND_DISCOVER's pre-step (Section 5), which has its own Path X/Path Y fallback and doesn't need this category.
 
-Feature-specific gotchas (Section 9) get their own values, not slots in the 9-pattern list: `sfl_cart_toggle_disabled` for the Save For Later admin-toggle prerequisite (Section 9, "Save For Later" -- Prerequisite), `bis_stale_variant_binding` for the Back In Stock stale-variant gotcha, `bis_custom_webhook_unreachable` for a BIS subscribe form that submits successfully in the UI but never reaches Swym because a merchant-side webhook/tunnel is dead (Section 9, "Back In Stock (SBiSA)" -- Gotchas; this is a live-confirmed failure mode, not theoretical). Use `unsupported_feature_requested` when a session is blocked because the requested feature is KNOWLEDGE-only or unverified (Section 9, "Not self-serve today" or "Unlisted or future features") -- this is the `{feature}`-scoped counterpart to the platform-level `out_of_scope`.
+Feature-specific gotchas (Section 9) get their own values, not slots in the 8-pattern list: `sfl_cart_toggle_disabled` for the Save For Later admin-toggle prerequisite (Section 9, "Save For Later" -- Prerequisite), `bis_stale_variant_binding` for the Back In Stock stale-variant gotcha, `bis_custom_webhook_unreachable` for a BIS subscribe form that submits successfully in the UI but never reaches Swym because a merchant-side webhook/tunnel is dead (Section 9, "Back In Stock (SBiSA)" -- Gotchas; this is a live-confirmed failure mode, not theoretical). Use `unsupported_feature_requested` when a session is blocked because the requested feature is KNOWLEDGE-only or unverified (Section 9, "Not self-serve today" or "Unlisted or future features") -- this is the `{feature}`-scoped counterpart to the platform-level `out_of_scope`.
 
 **Never ask the user for their email or the store owner's email.** `email_domain` (resolved at `session_start` and again in GITHUB_SETUP, Section 5) is read opportunistically from already-configured `gh`/`git` identity, never solicited -- and only the domain half ever leaves that step. If resolution fails, use `unknown.local` (non-blank, still non-identifying). `account_name` is the one field that is directly solicited, and only from the ThemeMate operator about themselves, at most once per install, with local-identity fallback if explicit input is unavailable -- never the merchant's or a customer's name. Full email addresses, the merchant's contact email, and customer email or name in any form are not accepted by this pipeline at all: this is a shared, anonymous, cross-merchant/cross-agency sheet with no per-account access control. The emit script enforces this for `email_domain` (rejects anything containing `@` or not domain-shaped) and drops any key it doesn't recognize.
 
