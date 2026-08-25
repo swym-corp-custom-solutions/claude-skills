@@ -773,8 +773,10 @@ A field's presence (and even a filled-in, brand-matched default value) in `confi
 Before building on top of or debugging any Swym widget, check whether the merchant already has custom CSS rules targeting Swym's own class/ID names (e.g. `.swym-button-bar`, `#swym-atw-pdp-button`) that would hide or override it -- this can silently break a widget across every template that shares the rule, and is easy to miss since it produces no error, just a widget that "isn't wired up":
 
 ```bash
-grep -rn "swym" ./<slug>/assets/*.css ./<slug>/config/settings_data.json 2>/dev/null | grep -iE "display:[[:space:]]*none|visibility:[[:space:]]*hidden|opacity:[[:space:]]*0"
+grep -rniE -A5 '\.swym-|#swym-|\[class\*="swym"\]' ./<slug>/assets/*.css ./<slug>/config/settings_data.json 2>/dev/null | grep -iE "display:[[:space:]]*none|visibility:[[:space:]]*hidden|opacity:[[:space:]]*0"
 ```
+
+The selector and its hiding declaration are almost always on separate lines in real CSS (`.swym-button-bar {` then `display: none;` a line below) -- `-A5` carries the 5 lines following each selector match into the second grep so declarations on nearby lines are still caught, and `-i` on both greps catches mixed-case class names.
 
 Also check the Additional CSS field (surfaced via `settings_data.json`'s custom CSS key, if the theme stores it there) for the same pattern. If found, flag it to the user before proceeding -- it may explain an "inactive" feature that the App Embed/DOM checks otherwise show as present.
 
